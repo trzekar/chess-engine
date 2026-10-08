@@ -1,0 +1,29 @@
+name: CI
+
+on: push
+
+jobs:
+  build:
+    name: ${{ matrix.compiler }} ${{ matrix.build_type }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [g++, clang++]
+        build_type: [Debug, Release]
+    env:
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DCMAKE_CXX_COMPILER=${{ matrix.compiler }}
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Smoke test
+        run: echo quit | ./build/engine
