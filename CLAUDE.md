@@ -20,11 +20,19 @@ cmake -S . -B build/debug -DCMAKE_BUILD_TYPE=Debug
 cmake --build build/debug
 ```
 
+Run the tests after building:
+
+```sh
+ctest --test-dir build/debug --output-on-failure
+```
+
 - On Windows with MinGW, add `-G "MinGW Makefiles"` to the configure step.
 - Release (`-O3 -march=native`) is the only build used for perft speed, bench
   and matches. Never report timings from a debug build.
 - Debug enables ASan and UBSan everywhere except MinGW, which does not ship
   them. CI on Linux covers that gap.
+- Test targets (`test_types`) are built with `-UNDEBUG`, so `assert` stays
+  active in every build type.
 - Warnings are errors. Fix the cause. Do not silence a warning with a cast,
   a pragma or by dropping a flag unless asked.
 

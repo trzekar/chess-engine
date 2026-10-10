@@ -25,5 +25,8 @@ jobs:
       - name: Build
         run: cmake --build build --parallel
 
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
       - name: Smoke test
         run: echo quit | ./build/engine

@@ -20,13 +20,24 @@ else()
       "-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer")
 endif()
 
-add_executable(engine src/main.cpp)
-
-target_compile_options(engine PRIVATE
+set(WARNING_FLAGS
   -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wformat=2
   -Wfloat-equal -Wold-style-cast -Wnull-dereference -Werror)
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  target_compile_options(engine PRIVATE
+  list(APPEND WARNING_FLAGS
     -Wduplicated-cond -Wduplicated-branches -Wlogical-op)
 endif()
+
+add_executable(engine src/main.cpp)
+target_compile_options(engine PRIVATE ${WARNING_FLAGS})
+
+# Tests. Run with: ctest --test-dir <build dir> --output-on-failure
+enable_testing()
+
+add_executable(test_types tests/test_types.cpp)
+target_include_directories(test_types PRIVATE src)
+# The tests check with assert(), which -DNDEBUG removes. -UNDEBUG comes after
+# the build-type flags on the command line, so asserts stay on in Release too.
+target_compile_options(test_types PRIVATE ${WARNING_FLAGS} -UNDEBUG)
+add_test(NAME test_types COMMAND test_types)
