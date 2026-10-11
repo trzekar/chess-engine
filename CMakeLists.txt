@@ -29,7 +29,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     -Wduplicated-cond -Wduplicated-branches -Wlogical-op)
 endif()
 
-add_executable(engine src/main.cpp)
+add_executable(engine src/main.cpp src/position.cpp)
 target_compile_options(engine PRIVATE ${WARNING_FLAGS})
 
 # Tests. Run with: ctest --test-dir <build dir> --output-on-failure
@@ -41,3 +41,8 @@ target_include_directories(test_types PRIVATE src)
 # the build-type flags on the command line, so asserts stay on in Release too.
 target_compile_options(test_types PRIVATE ${WARNING_FLAGS} -UNDEBUG)
 add_test(NAME test_types COMMAND test_types)
+
+add_executable(test_fen tests/test_fen.cpp src/position.cpp)
+target_include_directories(test_fen PRIVATE src)
+target_compile_options(test_fen PRIVATE ${WARNING_FLAGS} -UNDEBUG)
+add_test(NAME test_fen COMMAND test_fen)

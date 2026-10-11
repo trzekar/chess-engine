@@ -1,23 +1,17 @@
 #include <iostream>
 #include "bitboard.h"
+#include "position.h"
 #include "types.h"
 
 int main() {
-    print_bitboard(FILE_A);
-    print_bitboard(RANK_5);
-    print_bitboard(square_bb(E4));
-
-    std::cout << popcount(FILE_D) << "\n";
+    Position pos;
+    pos.put_piece(WHITE, KING, A5);
+    pos.put_piece(BLACK, KING, F3);
+    pos.put_piece(WHITE, BISHOP, E5);
+    pos.put_piece(BLACK, KNIGHT, H8);
     
-    Move m = Move(A1, F5, DOUBLE_PUSH);
+    print_position(pos);
 
-    std::cout << m.from() << "\n";
-    std::cout << m.to() << "\n";
-    std::cout << int(m.flags()) << "\n";
-
-    Move m2 = Move(A7, A8, QUEEN_PROMOTION);
-
-    std::cout << m2.is_capture() << " " << m2.is_promotion() << "\n";
     return 0;
 
 }

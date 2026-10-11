@@ -8,7 +8,7 @@ enum Color : int { WHITE, BLACK, COLOR_NB };
 
 constexpr Color operator~(Color c) { return Color(c ^ 1); }
 
-enum PieceType : int {
+enum PieceType : uint8_t {
     PAWN,
     KNIGHT,
     BISHOP,
@@ -130,3 +130,12 @@ struct Move {
 
     constexpr bool operator==(const Move&) const = default;
 };
+
+enum CastlingRight : uint8_t {
+    NO_CASTLING = 0,
+    WHITE_KINGSIDE = 1,
+    WHITE_QUEENSIDE = 2,
+    BLACK_KINGSIDE = 4,
+    BLACK_QUEENSIDE = 8
+};
+
