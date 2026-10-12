@@ -29,7 +29,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     -Wduplicated-cond -Wduplicated-branches -Wlogical-op)
 endif()
 
-add_executable(engine src/main.cpp src/position.cpp)
+add_executable(engine src/main.cpp src/position.cpp src/attacks.cpp)
 target_compile_options(engine PRIVATE ${WARNING_FLAGS})
 
 # Tests. Run with: ctest --test-dir <build dir> --output-on-failure
@@ -42,7 +42,12 @@ target_include_directories(test_types PRIVATE src)
 target_compile_options(test_types PRIVATE ${WARNING_FLAGS} -UNDEBUG)
 add_test(NAME test_types COMMAND test_types)
 
-add_executable(test_fen tests/test_fen.cpp src/position.cpp)
+add_executable(test_fen tests/test_fen.cpp src/position.cpp src/attacks.cpp)
 target_include_directories(test_fen PRIVATE src)
 target_compile_options(test_fen PRIVATE ${WARNING_FLAGS} -UNDEBUG)
 add_test(NAME test_fen COMMAND test_fen)
+
+add_executable(test_attacks tests/test_attacks.cpp src/position.cpp src/attacks.cpp)
+target_include_directories(test_attacks PRIVATE src)
+target_compile_options(test_attacks PRIVATE ${WARNING_FLAGS} -UNDEBUG)
+add_test(NAME test_attacks COMMAND test_attacks)

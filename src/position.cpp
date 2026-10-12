@@ -1,4 +1,5 @@
 #include "position.h"
+#include "attacks.h"
 
 #include <charconv>
 #include <iostream>
@@ -202,4 +203,27 @@ void print_position(const Position &pos) {
     }
     std::cout << "  a b c d e f g h\n";
     std::cout << to_fen(pos) << '\n';
+}
+
+bool Position::is_attacked(Square s, Color by) const {
+    if (KNIGHT_ATTACKS[s] & pieces[by][KNIGHT])
+        return true;
+
+    Bitboard occ = occupied();
+
+    Bitboard rooks_and_queens = (pieces[by][ROOK] | pieces[by][QUEEN]);
+    if (rook_attacks(s, occ) & rooks_and_queens)
+        return true;
+
+    Bitboard bishops_and_queens = (pieces[by][BISHOP] | pieces[by][QUEEN]);
+    if (bishop_attacks(s, occ) & bishops_and_queens)
+        return true;
+
+    if (KING_ATTACKS[s] & pieces[by][KING])
+        return true;
+
+    if (PAWN_ATTACKS[~by][s] & pieces[by][PAWN])
+        return true;
+
+    return false;
 }

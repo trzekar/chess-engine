@@ -41,6 +41,8 @@ struct Position {
     Bitboard occupied() const {
         return (occupancy[WHITE] | occupancy[BLACK]); 
     }
+
+    bool is_attacked(Square s, Color by) const;
 };
 
 constexpr std::string_view START_FEN =

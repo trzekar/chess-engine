@@ -31,8 +31,8 @@ ctest --test-dir build/debug --output-on-failure
   and matches. Never report timings from a debug build.
 - Debug enables ASan and UBSan everywhere except MinGW, which does not ship
   them. CI on Linux covers that gap.
-- Test targets (`test_types`) are built with `-UNDEBUG`, so `assert` stays
-  active in every build type.
+- All test targets are built with `-UNDEBUG`, so `assert` stays active in
+  every build type.
 - Warnings are errors. Fix the cause. Do not silence a warning with a cast,
   a pragma or by dropping a flag unless asked.
 
@@ -87,6 +87,10 @@ and to checking that every number matches the recorded results.
   result. Node counts alone are not evidence of strength.
 - Do not report work as done unless you built it and ran the relevant tests.
   If you could not run them, say so.
+- `test_attacks` is the oracle for attack generation: it compares the
+  tables, the sliding attacks and `is_attacked` with a square-by-square
+  reference. When `attacks.cpp` changes (magic bitboards in step 5.2), the
+  test must pass unchanged.
 
 ## Git
 
