@@ -11,7 +11,13 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native")
+# -march=native tunes Release for the CPU of the machine that builds it. CI turns it off
+# (-DNATIVE=OFF): runner CPUs vary, and clang 18 rejects -march=native on AVX10 CPUs.
+option(NATIVE "Optimize Release builds for the CPU of the build machine" ON)
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
+if(NATIVE)
+  string(APPEND CMAKE_CXX_FLAGS_RELEASE " -march=native")
+endif()
 
 if(MINGW)
   set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g")

@@ -21,6 +21,7 @@ jobs:
           cmake -S . -B build
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
           -DCMAKE_CXX_COMPILER=${{ matrix.compiler }}
+          -DNATIVE=OFF
 
       - name: Build
         run: cmake --build build --parallel
