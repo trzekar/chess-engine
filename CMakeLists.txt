@@ -35,7 +35,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     -Wduplicated-cond -Wduplicated-branches -Wlogical-op)
 endif()
 
-add_executable(engine src/main.cpp src/position.cpp src/attacks.cpp src/movegen.cpp)
+add_executable(engine src/main.cpp src/position.cpp src/attacks.cpp src/movegen.cpp src/perft.cpp)
 target_compile_options(engine PRIVATE ${WARNING_FLAGS})
 
 # Tests. Run with: ctest --test-dir <build dir> --output-on-failure
@@ -63,3 +63,9 @@ add_executable(test_movegen tests/test_movegen.cpp
 target_include_directories(test_movegen PRIVATE src)
 target_compile_options(test_movegen PRIVATE ${WARNING_FLAGS} -UNDEBUG)
 add_test(NAME test_movegen COMMAND test_movegen)
+
+add_executable(test_make_move tests/test_make_move.cpp
+  src/position.cpp src/attacks.cpp src/movegen.cpp)
+target_include_directories(test_make_move PRIVATE src)
+target_compile_options(test_make_move PRIVATE ${WARNING_FLAGS} -UNDEBUG)
+add_test(NAME test_make_move COMMAND test_make_move)
