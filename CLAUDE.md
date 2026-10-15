@@ -26,6 +26,12 @@ Run the tests after building:
 ctest --test-dir build/debug --output-on-failure
 ```
 
+Run a single test by name, for example after a change to move generation:
+
+```sh
+ctest --test-dir build/debug -R test_movegen --output-on-failure
+```
+
 - On Windows with MinGW, add `-G "MinGW Makefiles"` to the configure step.
 - Release (`-O3 -march=native`) is the only build used for perft speed, bench
   and matches. Never report timings from a debug build.
@@ -91,6 +97,10 @@ and to checking that every number matches the recorded results.
   tables, the sliding attacks and `is_attacked` with a square-by-square
   reference. When `attacks.cpp` changes (magic bitboards in step 5.2), the
   test must pass unchanged.
+- `test_movegen` checks `generate_moves` in 15 positions: move counts per category
+  against an independent generator, plus properties (no duplicates, no move onto an
+  own piece, capture flags). Until perft exists (step 1.6) it is the oracle for move
+  generation. Never edit an expected count to make it pass.
 
 ## Git
 
