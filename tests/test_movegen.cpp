@@ -51,7 +51,7 @@ static const Expected POSITIONS[] = {
     {"4r1k1/8/8/8/8/8/8/R3K2R w KQ - 0 1", 24, 24, 0, 0, 0},
 };
 
-static bool is_castle(Move m) { return m.flags() == KING_CASTLE || m.flags() == QUEEN_CASTLE; }
+static bool is_castle(Move m) { return m.flag() == KING_CASTLE || m.flag() == QUEEN_CASTLE; }
 
 // On a mismatch, prints the FEN and the whole move list before failing, so the missing or
 // extra move can be found by eye or compared with Stockfish's "go perft 1".
@@ -76,7 +76,7 @@ static void test_counts() {
         for (Move m : list) {
             pieces += pos.piece_at(m.from()) != PAWN && !is_castle(m);
             captures += m.is_capture();
-            double_pushes += m.flags() == DOUBLE_PUSH;
+            double_pushes += m.flag() == DOUBLE_PUSH;
             castles += is_castle(m);
         }
 
@@ -107,7 +107,7 @@ static void test_properties() {
             // The capture bit is set exactly when an enemy piece stands on the target square.
             // En passant is the exception: its target square is empty.
             const bool enemy_on_target = pos.occupancy[~us] & square_bb(m.to());
-            if (m.flags() == EN_PASSANT_CAPTURE)
+            if (m.flag() == EN_PASSANT_CAPTURE)
                 assert(m.to() == pos.ep_square && !enemy_on_target);
             else
                 assert(m.is_capture() == enemy_on_target);

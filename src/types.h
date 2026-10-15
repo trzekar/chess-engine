@@ -1,6 +1,6 @@
 #pragma once
-#include <cstdint>
 #include <cassert>
+#include <cstdint>
 
 using Bitboard = uint64_t;
 
@@ -120,15 +120,15 @@ struct Move {
 
     constexpr Square from() const { return Square(data & 0b111111); }
     constexpr Square to() const { return Square((data >> 6) & 0b111111); }
-    constexpr MoveFlag flags() const { return MoveFlag(data >> 12); }
-    constexpr bool is_capture() const { return bool(flags() & 0b100); }
-    constexpr bool is_promotion() const { return bool(flags() & 0b1000); }
+    constexpr MoveFlag flag() const { return MoveFlag(data >> 12); }
+    constexpr bool is_capture() const { return bool(flag() & 0b100); }
+    constexpr bool is_promotion() const { return bool(flag() & 0b1000); }
     constexpr PieceType promotion_type() const {
         assert(is_promotion());
-        return PieceType(KNIGHT + (flags() & 0b11));
+        return PieceType(KNIGHT + (flag() & 0b11));
     }
 
-    constexpr bool operator==(const Move&) const = default;
+    constexpr bool operator==(const Move &) const = default;
 };
 
 enum CastlingRight : uint8_t {
@@ -138,4 +138,3 @@ enum CastlingRight : uint8_t {
     BLACK_KINGSIDE = 4,
     BLACK_QUEENSIDE = 8
 };
-

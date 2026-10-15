@@ -32,10 +32,9 @@ static_assert((RANK_1 | RANK_2 | RANK_3 | RANK_4 | RANK_5 | RANK_6 | RANK_7 | RA
 static_assert(Move().data == 0);
 static_assert(Move(E2, E4, DOUBLE_PUSH).from() == E2);
 static_assert(Move(E2, E4, DOUBLE_PUSH).to() == E4);
-static_assert(Move(E2, E4, DOUBLE_PUSH).flags() == DOUBLE_PUSH);
+static_assert(Move(E2, E4, DOUBLE_PUSH).flag() == DOUBLE_PUSH);
 static_assert(Move(E2, E4, QUIET) == Move(E2, E4, QUIET));
 static_assert(Move(E2, E4, QUIET) != Move(E2, E4, DOUBLE_PUSH));
-
 
 static void test_square_roundtrip() {
     for (int sq = 0; sq < 64; ++sq) {
@@ -72,10 +71,20 @@ static void test_pop_lsb() {
 
 static void test_move_encoding() {
     const MoveFlag all_flags[] = {
-        QUIET, DOUBLE_PUSH, KING_CASTLE, QUEEN_CASTLE, CAPTURE, EN_PASSANT_CAPTURE,
-        KNIGHT_PROMOTION, BISHOP_PROMOTION, ROOK_PROMOTION, QUEEN_PROMOTION,
-        KNIGHT_PROMOTION_CAPTURE, BISHOP_PROMOTION_CAPTURE,
-        ROOK_PROMOTION_CAPTURE, QUEEN_PROMOTION_CAPTURE,
+        QUIET,
+        DOUBLE_PUSH,
+        KING_CASTLE,
+        QUEEN_CASTLE,
+        CAPTURE,
+        EN_PASSANT_CAPTURE,
+        KNIGHT_PROMOTION,
+        BISHOP_PROMOTION,
+        ROOK_PROMOTION,
+        QUEEN_PROMOTION,
+        KNIGHT_PROMOTION_CAPTURE,
+        BISHOP_PROMOTION_CAPTURE,
+        ROOK_PROMOTION_CAPTURE,
+        QUEEN_PROMOTION_CAPTURE,
     };
 
     for (int from = 0; from < 64; ++from)
@@ -84,12 +93,16 @@ static void test_move_encoding() {
                 Move m(Square(from), Square(to), flag);
                 assert(m.from() == from);
                 assert(m.to() == to);
-                assert(m.flags() == flag);
+                assert(m.flag() == flag);
             }
 }
 
 static void test_move_predicates() {
-    struct Case { MoveFlag flag; bool capture; bool promotion; };
+    struct Case {
+        MoveFlag flag;
+        bool capture;
+        bool promotion;
+    };
     const Case cases[] = {
         {QUIET, false, false},
         {DOUBLE_PUSH, false, false},
@@ -106,7 +119,7 @@ static void test_move_predicates() {
         {ROOK_PROMOTION_CAPTURE, true, true},
         {QUEEN_PROMOTION_CAPTURE, true, true},
     };
-    for (const Case& c : cases) {
+    for (const Case &c : cases) {
         Move m(E7, D8, c.flag);
         assert(m.is_capture() == c.capture);
         assert(m.is_promotion() == c.promotion);
