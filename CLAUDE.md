@@ -101,6 +101,16 @@ and to checking that every number matches the recorded results.
   against an independent generator, plus properties (no duplicates, no move onto an
   own piece, capture flags). Until perft exists (step 1.6) it is the oracle for move
   generation. Never edit an expected count to make it pass.
+- `test_make_move` checks `make_move` in two ways. 20 hand-picked moves, one per rule
+  (castling, en passant, promotions, castling rights, counters, four illegal moves),
+  compare the FEN after the move with an independent implementation (python-chess).
+  A walk three plies deep through the six perft positions checks the rules that hold
+  after every move: the board representations agree, the side to move changes,
+  castling rights only shrink, and the en passant square and both counters follow
+  the move. Never edit an expected FEN to make it pass.
+- Expected FENs record the en passant square after every double push, as the FEN
+  standard does. Stockfish's `d` command shows it only when an en passant capture is
+  possible, so a FEN copied from Stockfish can differ in that field.
 
 ## Git
 

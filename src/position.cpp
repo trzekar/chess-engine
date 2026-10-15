@@ -24,6 +24,16 @@ constexpr CastlingInfo CASTLING_INFO[] = {
     {'q', BLACK_QUEENSIDE, BLACK, E8, A8},
 };
 
+// Every move ANDs the masks of its two squares into castling_rights. `from` covers the
+// own king or rook leaving home, `to` covers a rook captured on its home square.
+// A1 loses Q, E1 loses K and Q, H1 loses K
+// A8 loses q, E8 loses k and q, H8 loses k
+// Other squares don't cause loss of any castling rights.
+const uint8_t CASTLING_MASK[64] = {13, 15, 15, 15, 12, 15, 15, 14, 15, 15, 15, 15, 15, 15, 15, 15,
+                                   15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,
+                                   15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,
+                                   15, 15, 15, 15, 15, 15, 15, 15, 7,  15, 15, 15, 3,  15, 15, 11};
+
 static std::vector<std::string_view> split_fields(std::string_view text) {
     std::vector<std::string_view> fields;
     size_t start = text.find_first_not_of(WHITESPACE);
@@ -226,4 +236,66 @@ bool Position::is_attacked(Square s, Color by) const {
         return true;
 
     return false;
+}
+
+bool Position::make_move(Move m) {
+    Color us = side_to_move;
+    Color them = ~side_to_move;
+    Square from = m.from();
+    Square to = m.to();
+    PieceType pt = piece_at(from);
+    MoveFlag flag = m.flag();
+
+    // Every move clears the old en passant square and counts toward the fifty-move rule.
+    // A double push sets a new square below, a capture or a pawn move resets the counter.
+    ep_square = NO_SQUARE;
+    half_move_counter++;
+
+    if (m.is_capture()) {
+        if (flag == EN_PASSANT_CAPTURE) {
+            // The only capture whose victim is not on `to`: the pawn stands on the file of `to`
+            // and the rank of `from`.
+            Square captured_s = make_square(file_of(to), rank_of(from));
+            remove_piece(them, piece_at(captured_s), captured_s);
+        } else {
+            remove_piece(them, piece_at(to), to);
+        }
+        half_move_counter = 0;
+    }
+
+    remove_piece(us, pt, from);
+
+    if (m.is_promotion()) {
+        put_piece(us, m.promotion_type(), to);
+    } else {
+        put_piece(us, pt, to);
+    }
+
+    // The king has already moved like any other piece; castling only adds the rook's jump.
+    if (flag == QUEEN_CASTLE) {
+        remove_piece(us, ROOK, make_square(0, rank_of(from)));
+        put_piece(us, ROOK, make_square(3, rank_of(from)));
+    } else if (flag == KING_CASTLE) {
+        remove_piece(us, ROOK, make_square(7, rank_of(from)));
+        put_piece(us, ROOK, make_square(5, rank_of(from)));
+    }
+
+    if (pt == PAWN) {
+        half_move_counter = 0;
+    }
+
+    // The en passant square is the one the pawn skipped, halfway between `from` and `to`.
+    if (flag == DOUBLE_PUSH) {
+        ep_square = Square((from + to) / 2);
+    }
+
+    castling_rights &= CASTLING_MASK[from] & CASTLING_MASK[to];
+
+    if (us == BLACK) {
+        move_number++;
+    }
+
+    side_to_move = ~side_to_move;
+
+    return !is_attacked(lsb(pieces[us][KING]), them);
 }
