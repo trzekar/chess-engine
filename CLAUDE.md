@@ -32,6 +32,14 @@ Run a single test by name, for example after a change to move generation:
 ctest --test-dir build/debug -R test_movegen --output-on-failure
 ```
 
+Count perft nodes with the engine binary. Without a FEN it starts from the initial
+position; pass the FEN as one quoted argument. Take speed numbers from Release only.
+
+```sh
+./build/release/engine perft 5
+./build/release/engine perft 4 "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
+```
+
 - On Windows with MinGW, add `-G "MinGW Makefiles"` to the configure step.
 - Release (`-O3 -march=native`) is the only build used for perft speed, bench
   and matches. Never report timings from a debug build.
