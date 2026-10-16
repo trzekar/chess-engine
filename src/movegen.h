@@ -20,3 +20,7 @@ struct MoveList {
 void generate_moves(const Position &pos, MoveList &list);
 
 std::string to_uci(Move m);
+
+// Finds the generated move whose UCI name is `uci`, or returns Move() if there is none.
+// The move is only pseudo-legal, the caller still has to check the result of make_move.
+Move parse_uci_move(const Position &pos, std::string_view uci);

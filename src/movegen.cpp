@@ -166,3 +166,13 @@ std::string to_uci(Move m) {
         uci += "nbrq"[m.promotion_type() - KNIGHT];
     return uci;
 }
+
+Move parse_uci_move(const Position &pos, std::string_view uci) {
+    MoveList list;
+    generate_moves(pos, list);
+    for (const Move m : list) {
+        if (to_uci(m) == uci)
+            return m;
+    }
+    return Move();
+}

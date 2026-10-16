@@ -123,11 +123,44 @@ static void test_to_uci() {
     assert(to_uci(Move()) == "0000");
 }
 
+// Every generated move must come back unchanged from its UCI name. Two generated moves with
+// the same name would fail here too, since parse_uci_move can return only one of them.
+static void test_parse_uci_move() {
+    for (const Expected &e : POSITIONS) {
+        Position pos;
+        assert(parse_fen(e.fen, pos));
+        MoveList list;
+        generate_moves(pos, list);
+        for (Move m : list)
+            assert(parse_uci_move(pos, to_uci(m)) == m);
+    }
+
+    // Names the generator never produces give Move().
+    Position start;
+    assert(parse_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", start));
+    assert(parse_uci_move(start, "e2e5") == Move());
+    assert(parse_uci_move(start, "e2") == Move());
+    assert(parse_uci_move(start, "") == Move());
+    assert(parse_uci_move(start, "0000") == Move());
+
+    // Promotion letters are lower case in UCI.
+    Position promo;
+    assert(parse_fen("4k3/1P6/8/8/8/8/8/4K3 w - - 0 1", promo));
+    assert(parse_uci_move(promo, "b7b8q") == Move(B7, B8, QUEEN_PROMOTION));
+    assert(parse_uci_move(promo, "b7b8Q") == Move());
+
+    // A move that leaves the own king in check is still found: rejecting it is make_move's job.
+    Position pinned;
+    assert(parse_fen("4k3/4r3/8/8/8/8/4B3/4K3 w - - 0 1", pinned));
+    assert(parse_uci_move(pinned, "e2d3") == Move(E2, D3, QUIET));
+}
+
 int main() {
     init_attacks();
     test_counts();
     test_properties();
     test_to_uci();
+    test_parse_uci_move();
     std::puts("test_movegen: OK");
     return 0;
 }
