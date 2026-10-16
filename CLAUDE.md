@@ -59,6 +59,14 @@ unknown or illegal move is an error.
 `divide` prints the node count under every legal move and the total, in the same format as
 Stockfish's `go perft`, so the two outputs can be compared line by line.
 
+Find where the engine's perft differs from Stockfish's. The script runs `divide` and
+`go perft`, descends into the cheapest differing branch and stops at the missing or extra
+move. Exit code 0: the counts match, 1: a difference was found, 2: a program failed.
+
+```sh
+python3 scripts/perft_diff.py --engine build/release/engine --stockfish <path to stockfish> --depth 4 --fen "<FEN>" [--moves e2e4 ...]
+```
+
 - On Windows with MinGW, add `-G "MinGW Makefiles"` to the configure step.
 - Release (`-O3 -march=native`) is the only build used for perft speed, bench
   and matches. Never report timings from a debug build.
