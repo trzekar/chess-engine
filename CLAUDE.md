@@ -32,6 +32,13 @@ Run a single test by name, for example after a change to move generation:
 ctest --test-dir build/debug -R test_movegen --output-on-failure
 ```
 
+Run the deep perft suite (Release only, about half a minute) before committing a change to
+move generation or `make_move`. CI runs it in the Release jobs:
+
+```sh
+./build/release/test_perft tests/perft_positions.epd --deep
+```
+
 Count perft nodes with the engine binary. Without a FEN it starts from the initial
 position; pass the FEN as one quoted argument. Take speed numbers from Release only.
 
@@ -106,8 +113,12 @@ and to checking that every number matches the recorded results.
 
 ## Verification
 
-- Perft is the oracle for move generation. Run the perft tests after any
-  change that touches move generation or board state.
+- `test_perft` is the oracle for move generation and `make_move`. It compares perft with
+  the published counts (chessprogramming.org/Perft_Results) in the seven positions of
+  `tests/perft_positions.epd`: every depth up to 5 million nodes in ctest, up to 200 million
+  with `--deep`. It also checks that `divide` prints the `go perft` format. Run the deep
+  suite after any change that touches move generation or board state. On a mismatch, find
+  the move with `engine divide` and Stockfish's `go perft`.
 - Never edit an expected node count to make a test pass.
 - A claim that a change makes the engine stronger needs a self-play match
   result. Node counts alone are not evidence of strength.
@@ -120,8 +131,8 @@ and to checking that every number matches the recorded results.
 - `test_movegen` checks `generate_moves` in 15 positions: move counts per category
   against an independent generator, plus properties (no duplicates, no move onto an
   own piece, capture flags). It also checks that `parse_uci_move` turns the UCI
-  name of every generated move back into the same move. Until perft exists it is the oracle for move
-  generation. Never edit an expected count to make it pass.
+  name of every generated move back into the same move. It fails with the whole move list at depth 1,
+  so read it first when perft breaks. Never edit an expected count to make it pass.
 - `test_make_move` checks `make_move` in two ways. 20 hand-picked moves, one per rule
   (castling, en passant, promotions, castling rights, counters, four illegal moves),
   compare the FEN after the move with an independent implementation (python-chess).

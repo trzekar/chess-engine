@@ -69,3 +69,13 @@ add_executable(test_make_move tests/test_make_move.cpp
 target_include_directories(test_make_move PRIVATE src)
 target_compile_options(test_make_move PRIVATE ${WARNING_FLAGS} -UNDEBUG)
 add_test(NAME test_make_move COMMAND test_make_move)
+
+
+# The fast perft suite runs in ctest. The deep one (--deep) is run directly: in CI by the
+# Release jobs, locally before committing a change to move generation or make_move.
+add_executable(test_perft tests/test_perft.cpp
+  src/position.cpp src/attacks.cpp src/movegen.cpp src/perft.cpp)
+target_include_directories(test_perft PRIVATE src)
+target_compile_options(test_perft PRIVATE ${WARNING_FLAGS} -UNDEBUG)
+add_test(NAME test_perft
+  COMMAND test_perft ${CMAKE_SOURCE_DIR}/tests/perft_positions.epd)
