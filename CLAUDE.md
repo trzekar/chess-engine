@@ -118,6 +118,11 @@ and to checking that every number matches the recorded results.
 - Scripts are Python 3 and use the standard library. Propose a dependency
   before adding one.
 - Generated output (build directories, PGNs, logs) is never committed.
+- Data copied from elsewhere keeps a comment naming its source, like the PeSTO tables in
+  `src/eval.cpp`, and the README credits it.
+- `init_attacks()` and `init_eval()` fill lookup tables and must run once before use: in
+  `main` and at the top of every test that needs them. A missing `init_eval` crashes
+  nothing, every score is simply 0.
 
 ## Verification
 
@@ -151,6 +156,15 @@ and to checking that every number matches the recorded results.
 - Expected FENs record the en passant square after every double push, as the FEN
   standard does. Stockfish's `d` command shows it only when an en passant capture is
   possible, so a FEN copied from Stockfish can differ in that field.
+- `test_eval` checks `eval` in three ways. Five known scores, computed by hand from the
+  PeSTO tables, pin the pure endgame (phase 0), the pure middlegame (phase 24), the blend
+  between them, the clamp after a promotion and the sign for the side to move. Two
+  orientation checks (a pawn on e7 beats one on e2, a castled king beats one on e1) hold for
+  any sensible tables and catch a table read upside down or a missing `init_eval`. A walk two
+  plies deep through the six perft positions (about 6600 positions) checks that every
+  position scores the same as its color-swapped mirror and that passing the move negates the
+  score. When the tables change, recompute the known scores by hand from the tables; never
+  copy them from the engine's output.
 
 ## Git
 

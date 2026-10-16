@@ -1,5 +1,6 @@
 #include "attacks.h"
 #include "bitboard.h"
+#include "eval.h"
 #include "movegen.h"
 #include "perft.h"
 #include "position.h"
@@ -94,6 +95,7 @@ static int run_divide(int argc, char **argv) {
 
 int main(int argc, char **argv) {
     init_attacks();
+    init_eval(); 
 
     if (argc > 1) {
         const std::string_view command = argv[1];
