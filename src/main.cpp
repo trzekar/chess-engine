@@ -1,8 +1,9 @@
-#include "bitboard.h"
-#include "position.h"
 #include "attacks.h"
-#include "types.h"
+#include "bitboard.h"
+#include "movegen.h"
 #include "perft.h"
+#include "position.h"
+#include "types.h"
 #include <charconv>
 #include <chrono>
 #include <cstdint>
@@ -10,35 +11,60 @@
 #include <string>
 #include <string_view>
 
-constexpr std::string_view USAGE = "usage: engine perft <depth> [fen]\n";
+constexpr std::string_view USAGE = "usage: engine perft <depth> [fen] [moves m1 m2 ...]\n"
+                                   "       engine divide <depth> [fen] [moves m1 m2 ...]\n";
 
-// engine perft <depth> [fen]: counts the positions `depth` plies deep and reports the speed.
-// The FEN may be one quoted argument or six separate ones; without it the start position is
-// used. Report speed only from a Release build.
-static int run_perft(int argc, char **argv) {
-    int depth = 0;
+// Reads "<depth> [fen] [moves m1 m2 ...]" from argv[2] onwards. The FEN may be one quoted
+// argument or six separate ones; without it the start position is used. As in the UCI
+// position command, the moves after the word "moves" are played before counting. On bad
+// input prints the reason and returns false.
+static bool parse_args(int argc, char **argv, int &depth, Position &pos) {
     const std::string_view depth_arg = argc > 2 ? argv[2] : "";
     const char *end = depth_arg.data() + depth_arg.size();
     const auto [ptr, ec] = std::from_chars(depth_arg.data(), end, depth);
     if (ec != std::errc() || ptr != end || depth < 1) {
         std::cerr << USAGE;
-        return 1;
+        return false;
     }
 
-    std::string fen(START_FEN);
-    if (argc > 3) {
-        fen = argv[3];
-        for (int i = 4; i < argc; ++i) {
+    // Everything up to the word "moves" belongs to the FEN.
+    int i = 3;
+    std::string fen;
+    for (; i < argc && std::string_view(argv[i]) != "moves"; ++i) {
+        if (!fen.empty())
             fen += ' ';
-            fen += argv[i];
-        }
+        fen += argv[i];
     }
+    if (fen.empty())
+        fen = START_FEN;
 
-    Position pos;
     if (!parse_fen(fen, pos)) {
         std::cerr << "invalid FEN: " << fen << '\n';
-        return 1;
+        return false;
     }
+
+    // `i` stands on the word "moves" (or past the end), so the list starts one further.
+    // Each move is tried on a copy: make_move changes the position even when it returns false,
+    // and the error message should show the position the move was played from.
+    for (++i; i < argc; ++i) {
+        const Move m = parse_uci_move(pos, argv[i]);
+        Position next = pos;
+        if (m == Move() || !next.make_move(m)) {
+            std::cerr << "illegal move: " << argv[i] << " in " << to_fen(pos) << '\n';
+            return false;
+        }
+        pos = next;
+    }
+    return true;
+}
+
+// engine perft <depth> [fen] [moves ...]: counts the positions `depth` plies deep and reports
+// the speed. Report speed only from a Release build.
+static int run_perft(int argc, char **argv) {
+    int depth = 0;
+    Position pos;
+    if (!parse_args(argc, argv, depth, pos))
+        return 1;
 
     const auto start = std::chrono::steady_clock::now();
     const uint64_t nodes = perft(pos, depth);
@@ -55,16 +81,29 @@ static int run_perft(int argc, char **argv) {
     return 0;
 }
 
+// engine divide <depth> [fen] [moves ...]: the node count under every legal move and the
+// total, in the format of Stockfish's "go perft", so the two can be compared line by line.
+static int run_divide(int argc, char **argv) {
+    int depth = 0;
+    Position pos;
+    if (!parse_args(argc, argv, depth, pos))
+        return 1;
+    divide(pos, depth, std::cout);
+    return 0;
+}
+
 int main(int argc, char **argv) {
     init_attacks();
 
     if (argc > 1) {
-        if (std::string_view(argv[1]) == "perft")
+        const std::string_view command = argv[1];
+        if (command == "perft")
             return run_perft(argc, argv);
-        std::cerr << "unknown command: " << argv[1] << '\n' << USAGE;
+        if (command == "divide")
+            return run_divide(argc, argv);
+        std::cerr << "unknown command: " << command << '\n' << USAGE;
         return 1;
     }
-
 
     return 0;
 }

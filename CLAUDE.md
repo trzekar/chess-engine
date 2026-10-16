@@ -40,6 +40,18 @@ position; pass the FEN as one quoted argument. Take speed numbers from Release o
 ./build/release/engine perft 4 "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
 ```
 
+Both `perft` and `divide` accept a move list after the word `moves`, as in the UCI `position`
+command. The moves are played from the given FEN (or the start position) before counting; an
+unknown or illegal move is an error.
+
+```sh
+./build/release/engine perft 3 moves e2e4 e7e5
+./build/release/engine divide 3 "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1" moves e1g1
+```
+
+`divide` prints the node count under every legal move and the total, in the same format as
+Stockfish's `go perft`, so the two outputs can be compared line by line.
+
 - On Windows with MinGW, add `-G "MinGW Makefiles"` to the configure step.
 - Release (`-O3 -march=native`) is the only build used for perft speed, bench
   and matches. Never report timings from a debug build.
@@ -103,11 +115,12 @@ and to checking that every number matches the recorded results.
   If you could not run them, say so.
 - `test_attacks` is the oracle for attack generation: it compares the
   tables, the sliding attacks and `is_attacked` with a square-by-square
-  reference. When `attacks.cpp` changes (magic bitboards in step 5.2), the
+  reference. When `attacks.cpp` changes, the
   test must pass unchanged.
 - `test_movegen` checks `generate_moves` in 15 positions: move counts per category
   against an independent generator, plus properties (no duplicates, no move onto an
-  own piece, capture flags). Until perft exists (step 1.6) it is the oracle for move
+  own piece, capture flags). It also checks that `parse_uci_move` turns the UCI
+  name of every generated move back into the same move. Until perft exists it is the oracle for move
   generation. Never edit an expected count to make it pass.
 - `test_make_move` checks `make_move` in two ways. 20 hand-picked moves, one per rule
   (castling, en passant, promotions, castling rights, counters, four illegal moves),
