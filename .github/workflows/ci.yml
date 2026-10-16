@@ -28,6 +28,13 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
+      
+      
+      # Every perft count up to 200 million nodes per position, about half a minute.
+      # Debug builds skip it: under the sanitizers it would take several minutes.
+      - name: Deep perft
+        if: matrix.build_type == 'Release'
+        run: ./build/test_perft tests/perft_positions.epd --deep
 
       - name: Smoke test
         run: echo quit | ./build/engine
