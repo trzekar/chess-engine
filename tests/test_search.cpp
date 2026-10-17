@@ -2,7 +2,10 @@
 #include "eval.h"
 #include "movegen.h"
 #include "search.h"
+#include "uci.h"
+#include <atomic>
 #include <charconv>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
@@ -10,6 +13,7 @@
 #include <iostream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 // Usage: test_search <mate_positions.epd>
 //
@@ -199,6 +203,88 @@ static void test_against_negamax() {
     }
 }
 
+// With only a depth limit, think runs the same iterations as search: the last one returns the
+// score and move of search(pos, depth), and the node count adds up the counts of
+// search(pos, 1), ..., search(pos, depth), since the counter runs on across iterations. The
+// callback sees every depth once, in order, with the clock never going back.
+static void test_think_depth_limit() {
+    for (const Tree &t : TREES) {
+        const Position pos = position_from(t.fen);
+        std::atomic<bool> stop{false};
+        std::vector<FinishedIteration> seen;
+        SearchLimits limits;
+        limits.depth = 3;
+        const SearchResult r =
+            think(pos, limits, stop, [&](const FinishedIteration &it) { seen.push_back(it); });
+
+        uint64_t nodes = 0;
+        for (int depth = 1; depth <= 3; ++depth)
+            nodes += search(pos, depth).nodes;
+        const SearchResult ab = search(pos, 3);
+        require(r.score == ab.score && r.best_move == ab.best_move,
+                "think: differs from search at the same depth", t.fen, r);
+        require(r.nodes == nodes, "think: node count is not the sum over its iterations", t.fen, r);
+        require(!stop, "think: set the stop flag without a time limit", t.fen, r);
+
+        require(seen.size() == 3, "think: one callback per depth", t.fen, r);
+        for (size_t i = 0; i < seen.size(); ++i) {
+            require(seen[i].depth == int(i) + 1, "think: depths out of order", t.fen,
+                    seen[i].result);
+            require(i == 0 || seen[i].time >= seen[i - 1].time, "think: the clock went back", t.fen,
+                    seen[i].result);
+        }
+        require(seen.back().result.best_move == r.best_move && seen.back().result.nodes == r.nodes,
+                "think: the result is not the last iteration", t.fen, r);
+    }
+}
+
+// A flag set before the call still gives a move: depth 1 always completes, and nothing after it.
+static void test_think_stopped_at_once() {
+    const std::string fen(START_FEN);
+    const Position pos = position_from(fen);
+    std::atomic<bool> stop{true};
+    std::vector<int> depths;
+    const SearchResult r = think(pos, SearchLimits{}, stop,
+                                 [&](const FinishedIteration &it) { depths.push_back(it.depth); });
+    require(depths == std::vector<int>{1}, "think: a set flag must stop after depth 1", fen, r);
+    require(r.best_move == search(pos, 1).best_move, "think: not the depth-1 move", fen, r);
+}
+
+// The budget is kept, with a margin wide enough for the sanitizers. In the start position no
+// budget here lasts long enough to reach MAX_PLY, so each one ends by the clock: think sets the
+// flag itself. A budget of 0 still gives the depth-1 move.
+static void test_think_time_limit() {
+    const std::string fen(START_FEN);
+    const Position pos = position_from(fen);
+    for (const int budget : {0, 50, 200}) {
+        std::atomic<bool> stop{false};
+        SearchLimits limits;
+        limits.time = std::chrono::milliseconds(budget);
+        int last_depth = 0;
+        const auto start = std::chrono::steady_clock::now();
+        const SearchResult r =
+            think(pos, limits, stop, [&](const FinishedIteration &it) { last_depth = it.depth; });
+        const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(
+                              std::chrono::steady_clock::now() - start)
+                              .count();
+        require(took <= budget + 400, "think: overran its time budget", fen, r);
+        require(stop, "think: the clock ran out but the flag is clear", fen, r);
+        require(last_depth >= 1 && r.best_move != Move(), "think: no move after a time limit", fen,
+                r);
+    }
+}
+
+// Without a legal move think returns at once, even without limits: one iteration, no move.
+static void test_think_no_legal_moves() {
+    const std::string fen = "rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3";
+    std::atomic<bool> stop{false};
+    int calls = 0;
+    const SearchResult r = think(position_from(fen), SearchLimits{}, stop,
+                                 [&](const FinishedIteration &) { ++calls; });
+    require(r.best_move == Move() && r.score == -MATE && calls == 1,
+            "think: a checkmated root gives Move(), -MATE and one iteration", fen, r);
+}
+
 int main(int argc, char **argv) {
     if (argc != 2) {
         std::cerr << "usage: test_search <mate_positions.epd>\n";
@@ -215,6 +301,10 @@ int main(int argc, char **argv) {
     test_no_legal_moves();
     test_negamax_node_counts();
     test_against_negamax();
+    test_think_depth_limit();
+    test_think_stopped_at_once();
+    test_think_time_limit();
+    test_think_no_legal_moves();
     std::cout << "test_search: OK\n";
     return 0;
 }

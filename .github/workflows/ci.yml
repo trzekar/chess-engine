@@ -36,5 +36,10 @@ jobs:
         if: matrix.build_type == 'Release'
         run: ./build/test_perft tests/perft_positions.epd --deep
 
+      # A short UCI session: the end of the input stops the search, and depth 1 always
+      # completes, so a bestmove must come back.
       - name: Smoke test
-        run: echo quit | ./build/engine
+        run: |
+          printf 'uci\nisready\nposition startpos moves e2e4\ngo depth 4\n' | ./build/engine > uci.out
+          cat uci.out
+          grep '^bestmove ' uci.out

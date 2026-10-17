@@ -6,6 +6,7 @@
 #include "position.h"
 #include "search.h"
 #include "types.h"
+#include "uci.h"
 #include <charconv>
 #include <chrono>
 #include <cstdint>
@@ -13,7 +14,8 @@
 #include <string>
 #include <string_view>
 
-constexpr std::string_view USAGE = "usage: engine perft <depth> [fen] [moves m1 m2 ...]\n"
+constexpr std::string_view USAGE = "usage: engine                (UCI on stdin and stdout)\n"
+                                   "       engine perft <depth> [fen] [moves m1 m2 ...]\n"
                                    "       engine divide <depth> [fen] [moves m1 m2 ...]\n"
                                    "       engine search <depth> [fen] [moves m1 m2 ...]\n"
                                    "       engine negamax <depth> [fen] [moves m1 m2 ...]\n";
@@ -143,5 +145,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    // Without arguments the engine speaks UCI, as GUIs, fastchess and lichess-bot expect.
+    uci_loop(std::cin, std::cout);
     return 0;
 }

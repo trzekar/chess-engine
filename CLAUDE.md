@@ -77,6 +77,31 @@ the node count and the speed. Record node counts in `results/nodes.csv`, from Re
 ./build/release/engine negamax 5
 ```
 
+Without arguments the engine speaks UCI on stdin and stdout, as GUIs, fastchess and lichess-bot
+expect. Check the protocol with fastchess's compliance test after any change to `src/uci.cpp`:
+
+```sh
+fastchess --compliance ./build/release/engine
+```
+
+Play self-play games to catch crashes, illegal moves and time losses. Each opening from the
+book is played twice with colours swapped; without a book the engine repeats one game. Take a
+book from github.com/official-stockfish/books and unzip it (a `.pgn` book takes
+`format=pgn`). Set `-concurrency` to the number of physical cores minus one. Then count how the
+games ended; every one must end on the board:
+
+```sh
+fastchess -engine cmd=build/release/engine name=a -engine cmd=build/release/engine name=b \
+  -each tc=8+0.08 -openings file=<book.epd> format=epd order=random \
+  -rounds 50 -repeat -concurrency 3 -pgnout file=selfplay.pgn
+python3 scripts/check_games.py selfplay.pgn --games 100
+```
+
+`check_games.py` reads the Termination tag fastchess writes: `normal` and `adjudication` pass,
+`time forfeit`, `illegal move`, `abandoned` (crash, disconnect, stall) and `unterminated` fail.
+Exit code 0: all games ended on the board, 1: a game failed or the count differs, 2: the file
+cannot be read.
+
 - On Windows with MinGW, add `-G "MinGW Makefiles"` to the configure step.
 - Release (`-O3 -march=native`) is the only build used for perft speed, bench
   and matches. Never report timings from a debug build.
@@ -98,6 +123,7 @@ The author writes the core engine logic by hand:
 - the transposition table
 - making a move on the board
 - Zobrist hashing
+- time management: `src/timeman.h`
 
 In that code, wherever it lives, do not write, rewrite or fix anything unless
 the request explicitly asks for it. Review only: cite the line, explain what
@@ -133,6 +159,10 @@ and to checking that every number matches the recorded results.
 - `init_attacks()` and `init_eval()` fill lookup tables and must run once before use: in
   `main` and at the top of every test that needs them. A missing `init_eval` crashes
   nothing, every score is simply 0.
+- The search runs on its own thread and never prints: `think` reports each completed depth
+  through its callback. Every line the engine writes goes through `Output::send` in
+  `src/uci.cpp`, which holds a mutex and flushes, so lines from the two threads never mix and
+  a GUI never waits for a buffered `bestmove`.
 
 ## Verification
 
@@ -175,7 +205,7 @@ and to checking that every number matches the recorded results.
   position scores the same as its color-swapped mirror and that passing the move negates the
   score. When the tables change, recompute the known scores by hand from the tables; never
   copy them from the engine's output.
-  - `test_search` checks `search` and `negamax_root` in four ways. The ten positions of
+- `test_search` checks `search` and `negamax_root` in four ways. The ten positions of
   `tests/mate_positions.epd` (five mates in 2, five in 3, four with Black to move) are solved
   by `search` at depth 2N with score `MATE - (2N - 1)` and the only winning first move; the
   mates in 2 also by `negamax_root`. A checkmated root scores `-MATE` and a stalemated one 0,
@@ -185,7 +215,20 @@ and to checking that every number matches the recorded results.
   with Stockfish and by a full-width check that no other first move mates as fast: never edit
   a move or a mate distance to make the test pass. The comparison with `negamax_root` holds
   while alpha-beta cutoffs are the only pruning; quiescence search, null move and reductions
-  end it, and the test must be changed in the same commit.
+  end it, and the test must be changed in the same commit. It also checks `think`:
+  with only a depth limit it returns the score and move of `search`
+  at that depth, its node count is the sum over its iterations, and the callback sees every
+  depth once in order; a stop flag set before the call still gives the depth-1 move; time
+  budgets of 0, 50 and 200 ms are kept and end with the flag set; a checkmated root gives
+  `Move()` after one iteration.
+- `test_uci` drives `uci_loop` as a GUI does, with commands sent while the engine thinks and
+  every output line timestamped: the `uci` handshake, `info` lines for every depth, `go
+  movetime` and `go wtime` kept within their budget, `isready` answered and `bestmove`
+  withheld during `go infinite` until `stop`, `quit` during a search, `score mate 2`,
+  `mate 1` and `mate -1`, and a bad FEN or an illegal move leaving the position as it was.
+  Timing checks allow 400 ms of slack for the sanitizers; they catch a search that ignores
+  the clock, not one a few milliseconds late.
+- Before a tag, 100 self-play games at 8+0.08 must pass `check_games.py` (see Build).
 
 ## Git
 

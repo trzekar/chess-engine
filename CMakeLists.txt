@@ -35,9 +35,13 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     -Wduplicated-cond -Wduplicated-branches -Wlogical-op)
 endif()
 
+# The UCI loop runs the search on a second thread.
+find_package(Threads REQUIRED)
+
 add_executable(engine src/main.cpp src/position.cpp src/attacks.cpp src/movegen.cpp src/perft.cpp
-  src/eval.cpp src/search.cpp)
+  src/eval.cpp src/search.cpp src/uci.cpp)
 target_compile_options(engine PRIVATE ${WARNING_FLAGS})
+target_link_libraries(engine PRIVATE Threads::Threads)
 
 # Tests. Run with: ctest --test-dir <build dir> --output-on-failure
 enable_testing()
@@ -83,6 +87,13 @@ target_include_directories(test_search PRIVATE src)
 target_compile_options(test_search PRIVATE ${WARNING_FLAGS} -UNDEBUG)
 add_test(NAME test_search
   COMMAND test_search ${CMAKE_SOURCE_DIR}/tests/mate_positions.epd)
+
+add_executable(test_uci tests/test_uci.cpp
+  src/uci.cpp src/search.cpp src/eval.cpp src/position.cpp src/attacks.cpp src/movegen.cpp)
+target_include_directories(test_uci PRIVATE src)
+target_compile_options(test_uci PRIVATE ${WARNING_FLAGS} -UNDEBUG)
+target_link_libraries(test_uci PRIVATE Threads::Threads)
+add_test(NAME test_uci COMMAND test_uci)
 
 # The fast perft suite runs in ctest. The deep one (--deep) is run directly: in CI by the
 # Release jobs, locally before committing a change to move generation or make_move.
