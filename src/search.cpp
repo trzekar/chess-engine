@@ -30,6 +30,9 @@ int negamax(const Position &pos, int depth, int ply) {
         }
     }
 
+    // Every real score is above -INF, so -INF here means no legal move. With pseudo-legal
+    // moves that is known only after trying them all. Adding `ply` makes a nearer mate
+    // score higher, so the engine prefers the shortest one.
     if (max == -INF) {
         if (pos.in_check(pos.side_to_move)) {
             return -MATE + ply;
@@ -57,6 +60,7 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
             continue;
         }
 
+        // The child scores from the other side: the bounds change sign and swap places.
         int score = -alphabeta(next, -beta, -alpha, depth - 1, ply + 1);
 
         if (score > best) {
@@ -66,6 +70,8 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
             }
         }
 
+        // The opponent already has a better choice higher in the tree and will avoid this
+        // position, so one refutation is enough.
         if (score >= beta) {
             return score;
         }
@@ -106,6 +112,7 @@ SearchResult negamax_root(const Position &pos, int depth) {
 
     result.nodes = nodes;
 
+    // No legal move at the root: checkmate or stalemate, with ply 0.
     if (result.score == -INF) {
         if (pos.in_check(pos.side_to_move)) {
             result.score = -MATE;
@@ -144,6 +151,7 @@ SearchResult search(const Position &pos, int depth) {
 
     result.nodes = nodes;
 
+    // No legal move at the root: checkmate or stalemate, with ply 0.
     if (result.score == -INF) {
         if (pos.in_check(pos.side_to_move)) {
             result.score = -MATE;

@@ -3,7 +3,9 @@
 #include "position.h"
 #include <cstdint>
 
-// INF must be greater than any score
+// Mate scores are MATE minus the plies to the mate, so they stay far above any evaluation
+// and still fit in 16 bits for the transposition table. INF must exceed every score, mates
+// included, so that -INF works as "no move searched yet".
 constexpr int INF = 32001;
 constexpr int MATE = 32000;
 
@@ -13,14 +15,16 @@ struct SearchResult {
 
     // From the point of view of the side to move.
     int score = 0;
+
+    // Every call of the search is a node, the root and the leaves included.
     uint64_t nodes = 0;
 };
 
 // Plain negamax without alpha-beta pruning: visits every node up to `depth`, so its node
 // count equals the sum of perft(0..depth). Too slow for play; kept as the reference that
-// `search` is tested against.
+// `search` is tested against. `depth` must be at least 1.
 SearchResult negamax_root(const Position &pos, int depth);
 
 // Alpha-beta search to a fixed `depth`. With the full window it returns the same score as
-// negamax_root while visiting fewer nodes.
+// negamax_root while visiting fewer nodes. `depth` must be at least 1.
 SearchResult search(const Position &pos, int depth);
