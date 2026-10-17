@@ -44,6 +44,8 @@ struct Position {
 
     bool is_attacked(Square s, Color by) const;
 
+    bool in_check(Color c) const;
+
     // Plays `m` and returns false if it leaves the own king in check.
     bool make_move(Move m);
 };

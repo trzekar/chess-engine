@@ -238,6 +238,11 @@ bool Position::is_attacked(Square s, Color by) const {
     return false;
 }
 
+bool Position::in_check(Color c) const{
+    Bitboard king_bb = pieces[c][KING];
+    return is_attacked(lsb(king_bb), ~c);
+}
+
 bool Position::make_move(Move m) {
     Color us = side_to_move;
     Color them = ~side_to_move;
