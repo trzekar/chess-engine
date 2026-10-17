@@ -67,6 +67,16 @@ move. Exit code 0: the counts match, 1: a difference was found, 2: a program fai
 python3 scripts/perft_diff.py --engine build/release/engine --stockfish <path to stockfish> --depth 4 --fen "<FEN>" [--moves e2e4 ...]
 ```
 
+Search a position to a fixed depth with the engine binary. `search` is alpha-beta, `negamax`
+the reference without pruning. Both take the same FEN and move arguments as `perft` and print
+the best move (`0000` without legal moves), the score from the side to move's point of view,
+the node count and the speed. Record node counts in `results/nodes.csv`, from Release only.
+
+```sh
+./build/release/engine search 5
+./build/release/engine negamax 5
+```
+
 - On Windows with MinGW, add `-G "MinGW Makefiles"` to the configure step.
 - Release (`-O3 -march=native`) is the only build used for perft speed, bench
   and matches. Never report timings from a debug build.
@@ -165,6 +175,17 @@ and to checking that every number matches the recorded results.
   position scores the same as its color-swapped mirror and that passing the move negates the
   score. When the tables change, recompute the known scores by hand from the tables; never
   copy them from the engine's output.
+  - `test_search` checks `search` and `negamax_root` in four ways. The ten positions of
+  `tests/mate_positions.epd` (five mates in 2, five in 3, four with Black to move) are solved
+  by `search` at depth 2N with score `MATE - (2N - 1)` and the only winning first move; the
+  mates in 2 also by `negamax_root`. A checkmated root scores `-MATE` and a stalemated one 0,
+  both with `Move()` and one node. `negamax_root` visits exactly the sum of perft(0..3) in the
+  perft positions. There `search` returns the same score and move as `negamax_root` at depths
+  1 to 3, with the same node count at depth 1 and fewer from depth 2. Every mate was verified
+  with Stockfish and by a full-width check that no other first move mates as fast: never edit
+  a move or a mate distance to make the test pass. The comparison with `negamax_root` holds
+  while alpha-beta cutoffs are the only pruning; quiescence search, null move and reductions
+  end it, and the test must be changed in the same commit.
 
 ## Git
 

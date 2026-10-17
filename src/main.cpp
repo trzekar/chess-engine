@@ -4,6 +4,7 @@
 #include "movegen.h"
 #include "perft.h"
 #include "position.h"
+#include "search.h"
 #include "types.h"
 #include <charconv>
 #include <chrono>
@@ -13,7 +14,9 @@
 #include <string_view>
 
 constexpr std::string_view USAGE = "usage: engine perft <depth> [fen] [moves m1 m2 ...]\n"
-                                   "       engine divide <depth> [fen] [moves m1 m2 ...]\n";
+                                   "       engine divide <depth> [fen] [moves m1 m2 ...]\n"
+                                   "       engine search <depth> [fen] [moves m1 m2 ...]\n"
+                                   "       engine negamax <depth> [fen] [moves m1 m2 ...]\n";
 
 // Reads "<depth> [fen] [moves m1 m2 ...]" from argv[2] onwards. The FEN may be one quoted
 // argument or six separate ones; without it the start position is used. As in the UCI
@@ -93,9 +96,38 @@ static int run_divide(int argc, char **argv) {
     return 0;
 }
 
+using SearchFunction = SearchResult (*)(const Position &, int);
+
+// engine search|negamax <depth> [fen] [moves ...]: searches to a fixed depth and prints the best
+// move, the score, the node count and the speed. `search` is alpha-beta, `negamax` the reference
+// without pruning; compare their node counts in a Release build.
+static int run_search(int argc, char **argv, SearchFunction search_function) {
+    int depth = 0;
+    Position pos;
+    if (!parse_args(argc, argv, depth, pos))
+        return 1;
+
+    const auto start = std::chrono::steady_clock::now();
+    const SearchResult result = search_function(pos, depth);
+    const auto elapsed = std::chrono::steady_clock::now() - start;
+    const auto us = std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count();
+    const uint64_t nps = us > 0 ? result.nodes * 1'000'000 / uint64_t(us) : 0;
+
+    // "0000" is the UCI name for no move: the position has no legal moves.
+    const std::string move = result.best_move == Move() ? "0000" : to_uci(result.best_move);
+    std::cout << "fen   " << to_fen(pos) << '\n'
+              << "depth " << depth << '\n'
+              << "move  " << move << '\n'
+              << "score " << result.score << '\n'
+              << "nodes " << result.nodes << '\n'
+              << "time  " << us / 1000 << " ms\n"
+              << "nps   " << nps << '\n';
+    return 0;
+}
+
 int main(int argc, char **argv) {
     init_attacks();
-    init_eval(); 
+    init_eval();
 
     if (argc > 1) {
         const std::string_view command = argv[1];
@@ -103,6 +135,10 @@ int main(int argc, char **argv) {
             return run_perft(argc, argv);
         if (command == "divide")
             return run_divide(argc, argv);
+        if (command == "search")
+            return run_search(argc, argv, search);
+        if (command == "negamax")
+            return run_search(argc, argv, negamax_root);
         std::cerr << "unknown command: " << command << '\n' << USAGE;
         return 1;
     }

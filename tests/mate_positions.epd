@@ -1,0 +1,30 @@
+# Forced mates with a single winning first move. Format: <FEN> ;dm <N> ;bm <move>
+# dm: the side to move mates in N moves. bm: the only first move that mates in N or fewer,
+# in UCI notation (the engine has no SAN parser). Read by test_search.
+#
+# Every position was checked twice: Stockfish 16 (depth 30, multipv 3) reports mate in N
+# with this move and no other move mating as fast, and a full-width search of every reply
+# to depth 2N - 1 finds no second first move that mates in N or fewer. Positions 4, 5, 9 and
+# 10 are colour-swapped mirrors, so Black is to move. Never edit a move or a mate distance to
+# make the test pass.
+#
+# 1. 1. Nf6+ gxf6 2. Bxf7#
+r2qkb1r/pp2nppp/3p4/2pNN1B1/2BnP3/3P4/PPP2PPP/R2bK2R w KQkq - 1 1 ;dm 2 ;bm d5f6
+# 2. 1. Nf4+ Kh4 2. Qg4#
+8/8/5N2/3N4/K7/7k/8/4b1Q1 w - - 0 1 ;dm 2 ;bm d5f4
+# 3. A quiet queen move: 1. Qf3 Kg1 2. Qg2#
+8/2K5/5Q2/n7/8/8/7k/7B w - - 0 1 ;dm 2 ;bm f6f3
+# 4. A quiet king move: 1... Kg3 2. b7 Re1#
+4r3/8/1P6/1b6/1P5P/5k2/8/7K b - - 0 1 ;dm 2 ;bm f3g3
+# 5. 1... Rxa7 2. Kg8 Rc8#
+5K2/P5r1/2r5/8/7k/8/4P3/8 b - - 0 1 ;dm 2 ;bm g7a7
+# 6. 1. Qb2 a5 2. Nc6 a4 3. Qb8#
+k4K2/2p5/p7/8/3N4/8/3Q4/8 w - - 0 1 ;dm 3 ;bm d2b2
+# 7. A quiet king move: 1. Kc2 Kb4 2. Qd4+ Ka3 3. Qc5#
+8/8/8/p7/8/k1N5/5Q1p/3K4 w - - 0 1 ;dm 3 ;bm d1c2
+# 8. 1. Rxd6 g4+ 2. Kg3 Kg5 3. Re5#
+8/4R3/1R1p4/6pk/8/7K/8/8 w - - 0 1 ;dm 3 ;bm b6d6
+# 9. 1... Rb7 2. d5 Rxc3 3. d6 Rc8#
+6K1/8/8/1r6/3P4/2P5/2r1k3/8 b - - 0 1 ;dm 3 ;bm b5b7
+# 10. 1... Rxf2 2. Kg1 Rc2 3. d6 Re1#
+8/8/8/3P1r2/8/4r3/5P2/3k3K b - - 0 1 ;dm 3 ;bm f5f2

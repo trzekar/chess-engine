@@ -36,7 +36,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 endif()
 
 add_executable(engine src/main.cpp src/position.cpp src/attacks.cpp src/movegen.cpp src/perft.cpp
-  src/eval.cpp)
+  src/eval.cpp src/search.cpp)
 target_compile_options(engine PRIVATE ${WARNING_FLAGS})
 
 # Tests. Run with: ctest --test-dir <build dir> --output-on-failure
@@ -76,6 +76,13 @@ add_executable(test_eval tests/test_eval.cpp
 target_include_directories(test_eval PRIVATE src)
 target_compile_options(test_eval PRIVATE ${WARNING_FLAGS} -UNDEBUG)
 add_test(NAME test_eval COMMAND test_eval)
+
+add_executable(test_search tests/test_search.cpp
+  src/search.cpp src/eval.cpp src/position.cpp src/attacks.cpp src/movegen.cpp)
+target_include_directories(test_search PRIVATE src)
+target_compile_options(test_search PRIVATE ${WARNING_FLAGS} -UNDEBUG)
+add_test(NAME test_search
+  COMMAND test_search ${CMAKE_SOURCE_DIR}/tests/mate_positions.epd)
 
 # The fast perft suite runs in ctest. The deep one (--deep) is run directly: in CI by the
 # Release jobs, locally before committing a change to move generation or make_move.

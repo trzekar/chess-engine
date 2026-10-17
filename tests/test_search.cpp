@@ -1,0 +1,220 @@
+#include "attacks.h"
+#include "eval.h"
+#include "movegen.h"
+#include "search.h"
+#include <charconv>
+#include <cstdint>
+#include <cstdlib>
+#include <fstream>
+#include <initializer_list>
+#include <iostream>
+#include <string>
+#include <string_view>
+
+// Usage: test_search <mate_positions.epd>
+//
+// Output goes through iostream rather than printf: MinGW's printf does not accept %llu
+// under -Wformat=2 -Werror.
+
+// The perft positions of tests/perft_positions.epd. negamax_root visits every node once, so
+// at depth 3 its node count is perft(0) + perft(1) + perft(2) + perft(3) of the published
+// counts. Search results are compared with negamax_root in the same positions.
+struct Tree {
+    const char *fen;
+    uint64_t nodes_to_depth_3;
+};
+
+static const Tree TREES[] = {
+    // 1 + 20 + 400 + 8902
+    {"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 9323},
+    // 1 + 48 + 2039 + 97862
+    {"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", 99950},
+    // 1 + 14 + 191 + 2812
+    {"8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", 3018},
+    // 1 + 6 + 264 + 9467
+    {"r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1", 9738},
+    {"r2q1rk1/pP1p2pp/Q4n2/bbp1p3/Np6/1B3NBn/pPPP1PPP/R3K2R b KQ - 0 1", 9738},
+    // 1 + 44 + 1486 + 62379
+    {"rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8", 63910},
+    // 1 + 46 + 2079 + 89890
+    {"r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10", 92016},
+};
+
+struct MateCase {
+    std::string fen;
+    int moves = 0;    // dm: mate in this many moves
+    std::string best; // bm: the only first move that mates that fast, in UCI notation
+};
+
+static std::string_view trim(std::string_view s) {
+    const size_t first = s.find_first_not_of(" \t\r");
+    if (first == std::string_view::npos)
+        return {};
+    return s.substr(first, s.find_last_not_of(" \t\r") - first + 1);
+}
+
+// Parses "<fen> ;dm <N> ;bm <move>". Returns false on a malformed line.
+static bool parse_mate_case(std::string_view line, MateCase &c) {
+    const size_t dm = line.find(";dm ");
+    const size_t bm = line.find(";bm ");
+    if (dm == std::string_view::npos || bm == std::string_view::npos || bm < dm)
+        return false;
+
+    c.fen = std::string(trim(line.substr(0, dm)));
+    const std::string_view moves = trim(line.substr(dm + 4, bm - dm - 4));
+    const char *end = moves.data() + moves.size();
+    const auto [ptr, ec] = std::from_chars(moves.data(), end, c.moves);
+    c.best = std::string(trim(line.substr(bm + 4)));
+    return ec == std::errc() && ptr == end && c.moves >= 1 && !c.best.empty();
+}
+
+static std::string describe(const SearchResult &r) {
+    const std::string move = r.best_move == Move() ? "0000" : to_uci(r.best_move);
+    return "move " + move + ", score " + std::to_string(r.score) + ", nodes " +
+           std::to_string(r.nodes);
+}
+
+// On a failure, prints the position and what the search returned before failing. Messages go
+// to stderr: it is unbuffered, so they survive the abort even when ctest pipes the output.
+static void require(bool ok, const char *what, const std::string &fen, const SearchResult &r) {
+    if (ok)
+        return;
+    std::cerr << fen << '\n' << what << ": " << describe(r) << '\n';
+    std::abort();
+}
+
+static Position position_from(const std::string &fen) {
+    Position pos;
+    if (!parse_fen(fen, pos)) {
+        std::cerr << "invalid FEN: " << fen << '\n';
+        std::abort();
+    }
+    return pos;
+}
+
+// At depth 0 the search returns the evaluation without looking for moves, so the mated
+// position, 2N - 1 plies from the root, needs one ply of depth left: a mate in N is found at
+// depth 2N. Its score is MATE minus the plies to the mate.
+static int test_mates(const char *path) {
+    std::ifstream file(path);
+    if (!file) {
+        std::cerr << "cannot open " << path << '\n';
+        std::abort();
+    }
+
+    int cases = 0;
+    std::string line;
+    while (std::getline(file, line)) {
+        const std::string_view text = trim(line);
+        if (text.empty() || text[0] == '#')
+            continue;
+        MateCase c;
+        if (!parse_mate_case(text, c)) {
+            std::cerr << "malformed line: " << line << '\n';
+            std::abort();
+        }
+
+        const Position pos = position_from(c.fen);
+        const int depth = 2 * c.moves;
+        const int score = MATE - (2 * c.moves - 1);
+
+        const SearchResult ab = search(pos, depth);
+        require(ab.score == score, "search: wrong mate score", c.fen, ab);
+        require(to_uci(ab.best_move) == c.best, "search: wrong first move", c.fen, ab);
+
+        // negamax_root takes seconds for a mate in 3 under the sanitizers, so only the mates
+        // in 2 are checked with it.
+        if (c.moves == 2) {
+            const SearchResult nm = negamax_root(pos, depth);
+            require(nm.score == score, "negamax_root: wrong mate score", c.fen, nm);
+            require(to_uci(nm.best_move) == c.best, "negamax_root: wrong first move", c.fen, nm);
+        }
+        ++cases;
+    }
+    return cases;
+}
+
+// Without legal moves at the root there is no move to return: Move(), and the score of the
+// game's end from the point of view of the side to move.
+static void test_no_legal_moves() {
+    struct Case {
+        const char *fen;
+        int score;
+    };
+    static const Case CASES[] = {
+        // Fool's mate: White is checkmated.
+        {"rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3", -MATE},
+        // 1. e4 g5 2. d4 f6 3. Qh5#: Black is checkmated.
+        {"rnbqkbnr/ppppp2p/5p2/6pQ/3PP3/8/PPP2PPP/RNB1KBNR b KQkq - 1 3", -MATE},
+        // Stalemate with Black to move, then with White to move.
+        {"7k/5Q2/6K1/8/8/8/8/8 b - - 0 1", 0},
+        {"8/8/8/8/8/6q1/5k2/7K w - - 0 1", 0},
+    };
+
+    for (const Case &c : CASES) {
+        const Position pos = position_from(c.fen);
+        for (int depth = 1; depth <= 3; ++depth) {
+            const SearchResult nm = negamax_root(pos, depth);
+            const SearchResult ab = search(pos, depth);
+            for (const SearchResult &r : {nm, ab}) {
+                require(r.best_move == Move(), "a move without legal moves", c.fen, r);
+                require(r.score == c.score, "wrong score without legal moves", c.fen, r);
+                require(r.nodes == 1, "only the root is a node", c.fen, r);
+            }
+        }
+    }
+}
+
+static void test_negamax_node_counts() {
+    for (const Tree &t : TREES) {
+        const SearchResult nm = negamax_root(position_from(t.fen), 3);
+        require(nm.nodes == t.nodes_to_depth_3, "negamax_root: node count is not the perft sum",
+                t.fen, nm);
+    }
+}
+
+// With the full window alpha-beta returns the minimax score, and with the same move order
+// and ties broken by the first move, the same move. At depth 1 it visits exactly the same
+// nodes: the root never cuts and its children are leaves. From depth 2 it visits fewer: once
+// the root has raised alpha, replies that refute a later root move cut the rest of its
+// subtree. A root that never raises alpha would still find the right score, only slower.
+// This holds while alpha-beta cutoffs are the only pruning: quiescence search, null move and
+// reductions (steps 4.1, 4.5, 4.6) end the comparison.
+static void test_against_negamax() {
+    for (const Tree &t : TREES) {
+        const Position pos = position_from(t.fen);
+        for (int depth = 1; depth <= 3; ++depth) {
+            const SearchResult nm = negamax_root(pos, depth);
+            const SearchResult ab = search(pos, depth);
+            const std::string context = std::string(t.fen) + "\ndepth " + std::to_string(depth) +
+                                        ", negamax_root " + describe(nm);
+            require(ab.score == nm.score, "search: score differs from negamax_root", context, ab);
+            require(ab.best_move == nm.best_move, "search: move differs from negamax_root", context,
+                    ab);
+            if (depth == 1)
+                require(ab.nodes == nm.nodes, "search: node count differs at depth 1", context, ab);
+            else
+                require(ab.nodes < nm.nodes, "search: no cutoff", context, ab);
+        }
+    }
+}
+
+int main(int argc, char **argv) {
+    if (argc != 2) {
+        std::cerr << "usage: test_search <mate_positions.epd>\n";
+        return 2;
+    }
+    init_attacks();
+    init_eval();
+
+    const int mates = test_mates(argv[1]);
+    if (mates != 10) {
+        std::cerr << "expected 10 mate positions, read " << mates << '\n';
+        return 1;
+    }
+    test_no_legal_moves();
+    test_negamax_node_counts();
+    test_against_negamax();
+    std::cout << "test_search: OK\n";
+    return 0;
+}
