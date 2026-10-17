@@ -39,7 +39,7 @@ endif()
 find_package(Threads REQUIRED)
 
 add_executable(engine src/main.cpp src/position.cpp src/attacks.cpp src/movegen.cpp src/perft.cpp
-  src/eval.cpp src/search.cpp src/uci.cpp)
+  src/eval.cpp src/search.cpp src/uci.cpp src/bench.cpp)
 target_compile_options(engine PRIVATE ${WARNING_FLAGS})
 target_link_libraries(engine PRIVATE Threads::Threads)
 
@@ -94,6 +94,19 @@ target_include_directories(test_uci PRIVATE src)
 target_compile_options(test_uci PRIVATE ${WARNING_FLAGS} -UNDEBUG)
 target_link_libraries(test_uci PRIVATE Threads::Threads)
 add_test(NAME test_uci COMMAND test_uci)
+
+add_executable(test_bench tests/test_bench.cpp
+  src/bench.cpp src/search.cpp src/eval.cpp src/position.cpp src/attacks.cpp src/movegen.cpp)
+target_include_directories(test_bench PRIVATE src)
+target_compile_options(test_bench PRIVATE ${WARNING_FLAGS} -UNDEBUG)
+add_test(NAME test_bench COMMAND test_bench)
+
+# match.py's own tests need Python only: no fastchess and no build. Without a Python 3
+# interpreter at configure time the test is left out.
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME test_match COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/test_match.py)
+endif()
 
 # The fast perft suite runs in ctest. The deep one (--deep) is run directly: in CI by the
 # Release jobs, locally before committing a change to move generation or make_move.

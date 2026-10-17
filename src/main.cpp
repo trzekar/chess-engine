@@ -1,4 +1,5 @@
 #include "attacks.h"
+#include "bench.h"
 #include "bitboard.h"
 #include "eval.h"
 #include "movegen.h"
@@ -18,7 +19,8 @@ constexpr std::string_view USAGE = "usage: engine                (UCI on stdin a
                                    "       engine perft <depth> [fen] [moves m1 m2 ...]\n"
                                    "       engine divide <depth> [fen] [moves m1 m2 ...]\n"
                                    "       engine search <depth> [fen] [moves m1 m2 ...]\n"
-                                   "       engine negamax <depth> [fen] [moves m1 m2 ...]\n";
+                                   "       engine negamax <depth> [fen] [moves m1 m2 ...]\n"
+                                   "       engine bench [depth]\n";
 
 // Reads "<depth> [fen] [moves m1 m2 ...]" from argv[2] onwards. The FEN may be one quoted
 // argument or six separate ones; without it the start position is used. As in the UCI
@@ -127,6 +129,24 @@ static int run_search(int argc, char **argv, SearchFunction search_function) {
     return 0;
 }
 
+// engine bench [depth]: searches the fixed bench positions (src/bench.h) to `depth`, by default
+// BENCH_DEPTH, and prints the node count of each, the total and the speed. The total must not
+// change in a change that is meant to leave the search as it was. Record it in
+// results/bench.csv, from Release only.
+static int run_bench(int argc, char **argv) {
+    int depth = BENCH_DEPTH;
+    if (argc > 2) {
+        const std::string_view depth_arg = argv[2];
+        const char *end = depth_arg.data() + depth_arg.size();
+        const auto [ptr, ec] = std::from_chars(depth_arg.data(), end, depth);
+        if (ec != std::errc() || ptr != end || depth < 1 || depth > MAX_PLY) {
+            std::cerr << USAGE;
+            return 1;
+        }
+    }
+    return bench(depth, std::cout) > 0 ? 0 : 1;
+}
+
 int main(int argc, char **argv) {
     init_attacks();
     init_eval();
@@ -141,6 +161,8 @@ int main(int argc, char **argv) {
             return run_search(argc, argv, search);
         if (command == "negamax")
             return run_search(argc, argv, negamax_root);
+        if (command == "bench")
+            return run_bench(argc, argv);
         std::cerr << "unknown command: " << command << '\n' << USAGE;
         return 1;
     }

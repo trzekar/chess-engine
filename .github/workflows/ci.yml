@@ -36,6 +36,11 @@ jobs:
         if: matrix.build_type == 'Release'
         run: ./build/test_perft tests/perft_positions.epd --deep
 
+      # The bench node count is the search's fingerprint; the log keeps it for every push.
+      - name: Bench
+        if: matrix.build_type == 'Release'
+        run: ./build/engine bench
+
       # A short UCI session: the end of the input stops the search, and depth 1 always
       # completes, so a bestmove must come back.
       - name: Smoke test

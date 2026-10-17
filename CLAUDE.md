@@ -77,6 +77,15 @@ the node count and the speed. Record node counts in `results/nodes.csv`, from Re
 ./build/release/engine negamax 5
 ```
 
+Measure the search with the bench: the twenty fixed positions of `src/bench.h` searched to
+depth 5 (`BENCH_DEPTH`). It prints the node count of every position, the total, the time and
+the speed. The total is the search's fingerprint: it is the same on every machine and in every
+run. Record it in `results/bench.csv`, from Release only.
+
+```sh
+./build/release/engine bench
+```
+
 Without arguments the engine speaks UCI on stdin and stdout, as GUIs, fastchess and lichess-bot
 expect. Check the protocol with fastchess's compliance test after any change to `src/uci.cpp`:
 
@@ -101,6 +110,25 @@ python3 scripts/check_games.py selfplay.pgn --games 100
 `time forfeit`, `illegal move`, `abandoned` (crash, disconnect, stall) and `unterminated` fail.
 Exit code 0: all games ended on the board, 1: a game failed or the count differs, 2: the file
 cannot be read.
+
+Measure strength with `match.py`. It builds two git revisions (tags, branches or commits;
+uncommitted changes belong to neither) in Release from clean copies of their sources, plays
+them with fastchess at 8+0.08 with the opening book, each opening twice with colours swapped,
+and appends one row to `results/matches.csv`. By default the match is an SPRT with
+elo0=0, elo1=10, alpha=beta=0.05 in logistic Elo, capped at 10 000 games; `--games N` plays
+exactly N games without SPRT. The PGN goes to `results/pgn/`.
+
+```sh
+python3 scripts/match.py v0.2 v0.1
+python3 scripts/match.py v0.1 v0.1 --games 200
+```
+
+The machine's settings live in `match.local.json` in the repository root, which is never
+committed: the paths of fastchess and the book, the number of games played at once (physical
+cores minus one) and, on Windows with MinGW, the CMake generator. The format is at the top of
+`scripts/match.py`. Exit code 0: the match finished and every game ended on the board, 1: a
+game ended by time forfeit, illegal move or crash (the row records how many), 2: the match
+could not be played or was interrupted, and no row was written.
 
 - On Windows with MinGW, add `-G "MinGW Makefiles"` to the configure step.
 - Release (`-O3 -march=native`) is the only build used for perft speed, bench
@@ -163,6 +191,14 @@ and to checking that every number matches the recorded results.
   through its callback. Every line the engine writes goes through `Output::send` in
   `src/uci.cpp`, which holds a mutex and flushes, so lines from the two threads never mix and
   a GUI never waits for a buffered `bestmove`.
+- `results/` holds the measurements: `nodes.csv`, `bench.csv` and `matches.csv`. Rows are only
+  ever appended, never edited, failed attempts included. `match.py` writes `matches.csv`; the
+  other two are filled by hand from Release runs.
+- The bench total is the search's fingerprint. A change meant to leave the search as it was (a
+  refactor, a speed-up, comments) must leave the total unchanged and needs no match. A change
+  that alters the total changes how the engine plays and needs a match. Changing
+  `BENCH_DEPTH` or the positions starts a new series: rerun the bench of the earlier tags with
+  the new setting.
 
 ## Verification
 
@@ -173,8 +209,9 @@ and to checking that every number matches the recorded results.
   suite after any change that touches move generation or board state. On a mismatch, find
   the move with `engine divide` and Stockfish's `go perft`.
 - Never edit an expected node count to make a test pass.
-- A claim that a change makes the engine stronger needs a self-play match
-  result. Node counts alone are not evidence of strength.
+- A claim that a change makes the engine stronger needs an SPRT from `match.py` that
+  accepted H1, recorded in `results/matches.csv`. Node counts alone are not evidence of
+  strength.
 - Do not report work as done unless you built it and ran the relevant tests.
   If you could not run them, say so.
 - `test_attacks` is the oracle for attack generation: it compares the
@@ -228,6 +265,13 @@ and to checking that every number matches the recorded results.
   `mate 1` and `mate -1`, and a bad FEN or an illegal move leaving the position as it was.
   Timing checks allow 400 ms of slack for the sanitizers; they catch a search that ignores
   the clock, not one a few milliseconds late.
+- `test_bench` checks the bench: every position parses, writes back to the same FEN and has a
+  legal move; the total equals the sum of `search` over the positions; two runs print the same
+  counts. It runs at depth 3 to stay fast under the sanitizers.
+- `test_match` checks `match.py` without fastchess and without a build: reading the result
+  block of real fastchess output (SPRT with H1 and with H0 accepted, SPRT without a verdict,
+  fixed matches, inf and nan), the fastchess command line, the CSV file and the settings file.
+  When fastchess changes its output, add a block copied from a real run to the test.
 - Before a tag, 100 self-play games at 8+0.08 must pass `check_games.py` (see Build).
 
 ## Git
@@ -235,6 +279,8 @@ and to checking that every number matches the recorded results.
 - Commit only when asked. One logical change per commit.
 - Tags mark measured versions and must stay reproducible. Never move or
   delete a tag, and never force-push.
+- A commit that changes the bench total ends its message with a line `Bench: <total>`, the
+  total of `engine bench` after the change, as in Stockfish.
 
 ## Secrets
 
