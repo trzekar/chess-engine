@@ -1,0 +1,31 @@
+# systemd unit of the Lichess bot. Do not copy it by hand: deploy.sh installs it as
+# /etc/systemd/system/lichess-bot.service and replaces @USER@, @REPO@ and @LICHESS_BOT@ with
+# the user who runs deploy.sh, this repository and the lichess-bot checkout next to it.
+
+[Unit]
+Description=Lichess bot: lichess-bot playing with chess-engine
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=@USER@
+Group=@USER@
+WorkingDirectory=@LICHESS_BOT@
+# One line, LICHESS_BOT_TOKEN=..., typed in by hand on the server: owned by root, mode 600.
+EnvironmentFile=/etc/lichess-bot.env
+Environment=PYTHONUNBUFFERED=1
+# The journal keeps the log (journalctl -u lichess-bot), so lichess-bot's own log files are off.
+ExecStart=@LICHESS_BOT@/venv/bin/python lichess-bot.py --config @REPO@/deploy/config.yml --disable_auto_logging
+Restart=always
+RestartSec=30
+
+# lichess-bot stops gracefully on SIGINT only: with quit_after_all_games_finish it lets the
+# running game end first. KillMode=mixed sends that SIGINT to lichess-bot alone; by default
+# systemd would send it to every process of the unit, and the engine would die mid-game. A
+# blitz game lasts at most about 20 minutes, so systemd waits 25 before it kills what is left.
+KillSignal=SIGINT
+KillMode=mixed
+TimeoutStopSec=25min
+
+[Install]
+WantedBy=multi-user.target

@@ -289,6 +289,22 @@ itself. Every move comes from the engine: no book, no online moves, no tablebase
 accepts blitz only and challenges other bots after 15 idle minutes. The token comes from the
 `LICHESS_BOT_TOKEN` environment variable only (see Secrets).
 
+On the server (Ubuntu with systemd; `chess-engine` and `lichess-bot`, with its venv, side by
+side in the home directory) the bot runs as the systemd service `lichess-bot`. Deploy a tag
+there, as the bot's user:
+
+```sh
+~/chess-engine/deploy/deploy.sh v0.2
+journalctl -u lichess-bot -f
+```
+
+`deploy.sh` pulls `main`, builds the tag in Release on the server, checks the binary (a UCI
+session must end in a bestmove; when the tag has the bench, its total must match the last
+`Bench:` line in the tag's history), installs it as `build/bot/engine`, installs the unit from
+`deploy/lichess-bot.service` and restarts the bot, which first lets the running game end.
+Deploying the previous tag again rolls back. Exit code 0: deployed, 1: a check failed and
+nothing changed, 2: bad usage or setup.
+
 ## Git
 
 - Commit only when asked. One logical change per commit.
@@ -299,6 +315,8 @@ accepts blitz only and challenges other bots after 15 idle minutes. The token co
 
 ## Secrets
 
-The Lichess API token lives only in an environment variable on the machine
-that runs the bot. Never ask for it, print it, or write it to any file,
-including configs and logs.
+The Lichess API token lives only on the machine that runs the bot: in the
+`LICHESS_BOT_TOKEN` environment variable, which the service loads from
+`/etc/lichess-bot.env` (owned by root, mode 600), typed in by hand on the server.
+Never ask for it, print it, or put it in any file yourself, including configs,
+scripts and logs.

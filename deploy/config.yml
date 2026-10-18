@@ -18,7 +18,7 @@ engine:
   # The bot plays a fixed, tagged build, never build/release: a rebuild during development
   # would otherwise change the engine between two games. Copy the binary of the tag here.
   dir: "../chess-engine/build/bot/"
-  name: "engine.exe"               # On Linux (step 3.2) the binary has no .exe.
+  name: "engine"                   # On Windows (a test run from the laptop): "engine.exe".
   protocol: "uci"
   ponder: false                    # The engine does not implement `go ponder`.
 
@@ -83,6 +83,10 @@ matchmaking:                       # Outgoing challenges to other bots.
   challenge_increment:
     - 0
     - 2
-  opponent_rating_difference: 300
+  # A new bot shows a provisional rating (3000? on Lichess) far above its strength, and the
+  # strongest bots decline unknown challengers. Until the blitz rating loses its "?", a fixed
+  # range finds opponents who accept; then opponent_rating_difference: 300 can replace it.
+  opponent_min_rating: 1000
+  opponent_max_rating: 2000
   challenge_mode: "rated"          # Rated games give the bot a Lichess rating.
   challenge_filter: coarse         # Do not challenge again a bot that declined.
