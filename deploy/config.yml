@@ -1,0 +1,88 @@
+# lichess-bot configuration for chess-engine. Run lichess-bot from its own folder, a sibling of
+# this repository, so the relative paths below resolve:
+#
+#   dev/
+#   ├── chess-engine/   this repository
+#   └── lichess-bot/    git clone https://github.com/lichess-bot-devs/lichess-bot
+#
+#   cd lichess-bot
+#   python lichess-bot.py --config ../chess-engine/deploy/config.yml
+#
+# The OAuth token is not in this file and never will be: lichess-bot reads it from the
+# LICHESS_BOT_TOKEN environment variable, which takes precedence over the `token` key.
+# Every key left out here takes lichess-bot's default; see config.yml.default in lichess-bot.
+
+url: "https://lichess.org/"
+
+engine:
+  # The bot plays a fixed, tagged build, never build/release: a rebuild during development
+  # would otherwise change the engine between two games. Copy the binary of the tag here.
+  dir: "../chess-engine/build/bot/"
+  name: "engine.exe"               # On Linux (step 3.2) the binary has no .exe.
+  protocol: "uci"
+  ponder: false                    # The engine does not implement `go ponder`.
+
+  # Every move comes from the engine: no opening book, no online moves, no tablebases.
+  polyglot:
+    enabled: false
+  online_moves:
+    chessdb_book:
+      enabled: false
+    lichess_cloud_analysis:
+      enabled: false
+    lichess_opening_explorer:
+      enabled: false
+    online_egtb:
+      enabled: false
+  lichess_bot_tbs:
+    syzygy:
+      enabled: false
+    gaviota:
+      enabled: false
+
+  # The result of a game is decided on the board: the bot neither resigns nor offers draws.
+  draw_or_resign:
+    resign_enabled: false
+    offer_draw_enabled: false
+
+  # The engine has no UCI options; it ignores `setoption`.
+  uci_options: {}
+
+abort_time: 30                     # Abort a game after 30 s without activity.
+fake_think_time: false
+move_overhead: 1000                # Milliseconds taken off the clock for network lag.
+quit_after_all_games_finish: true  # Ctrl-C waits until running games are over.
+
+challenge:                         # Incoming challenges.
+  concurrency: 1                   # One game at a time: the engine is single-threaded.
+  accept_bot: true
+  only_bot: false                  # Humans and bots alike.
+  variants:
+    - standard
+  time_controls:
+    - blitz                        # Lichess blitz: base + 40 x increment from 3 to 8 minutes.
+  modes:
+    - casual
+    - rated
+
+greeting:
+  hello: "Hi! I'm {me}, a chess engine written from scratch in C++. Good luck!"
+  goodbye: "Good game!"
+  hello_spectators: "Hi! I'm {me}, a chess engine written from scratch in C++."
+  goodbye_spectators: "Thanks for watching!"
+
+matchmaking:                       # Outgoing challenges to other bots.
+  allow_matchmaking: true
+  allow_during_games: false
+  challenge_variant: "standard"
+  challenge_timeout: 15            # Challenge a bot after 15 idle minutes: Lichess allows
+                                   # 100 games a day between bots, and 15 x 100 minutes > 1 day.
+  challenge_initial_time:          # 3+0, 3+2, 5+0 and 5+2: all blitz.
+    - 180
+    - 300
+  challenge_increment:
+    - 0
+    - 2
+  opponent_rating_difference: 300
+  challenge_mode: "rated"          # Rated games give the bot a Lichess rating.
+  challenge_filter: coarse         # Do not challenge again a bot that declined.

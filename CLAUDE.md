@@ -274,6 +274,21 @@ and to checking that every number matches the recorded results.
   When fastchess changes its output, add a block copied from a real run to the test.
 - Before a tag, 100 self-play games at 8+0.08 must pass `check_games.py` (see Build).
 
+## Lichess bot
+
+The bot runs lichess-bot, a separate project cloned next to this repository (never into it),
+with `deploy/config.yml`:
+
+```sh
+cd ../lichess-bot
+python lichess-bot.py --config ../chess-engine/deploy/config.yml
+```
+
+It plays the binary in `build/bot/`, a copy of a tagged Release build, never `build/release`
+itself. Every move comes from the engine: no book, no online moves, no tablebases. It
+accepts blitz only and challenges other bots after 15 idle minutes. The token comes from the
+`LICHESS_BOT_TOKEN` environment variable only (see Secrets).
+
 ## Git
 
 - Commit only when asked. One logical change per commit.
