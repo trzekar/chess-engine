@@ -64,6 +64,91 @@ void pick_next(MoveList &list, int scores[], int i) {
     std::swap(list.moves[i], list.moves[best_ind]);
 }
 
+// Quiescence search: past the depth limit, plays only captures and queen promotions until the
+// position is quiet, so eval never scores a position in the middle of an exchange (the horizon
+// effect). It needs no depth: every capture removes a piece, so the chains end on their own.
+// In check there is no stand pat, as no quiet move may hold the static score: every move is
+// searched, and with none legal the side is mated. Out of check only captures are searched,
+// so a stalemate cannot be told apart from a quiet position and is never scored here.
+int quiescence(const Position &pos, int alpha, int beta, int ply) {
+    state.nodes++;
+    if (state.nodes % CHECK_TIME_INTERVAL == 0 && state.is_time_limited) {
+        if (std::chrono::steady_clock::now() > state.end_time) {
+            *state.stop_flag = true;
+        }
+    }
+
+    // As in alphabeta: an interrupted child's value is meaningless.
+    if (*state.stop_flag) {
+        return 0;
+    }
+
+    // Only a guard: capture chains end long before MAX_PLY, but chains of checks could run on,
+    // and tables indexed by ply must not overflow.
+    if (ply >= MAX_PLY) {
+        return eval(pos);
+    }
+
+    int scores[256];
+    int best = -INF;
+
+    MoveList list;
+
+    const bool in_check = pos.in_check(pos.side_to_move);
+
+    if (!in_check) {
+        // Stand pat: the side to move need not capture, and some quiet move usually keeps at
+        // least the static score, so eval is a lower bound.
+        best = eval(pos);
+        if (best > alpha) {
+            alpha = best;
+        }
+        if (best >= beta) {
+            return best;
+        }
+        generate_captures(pos, list);
+    } else {
+        generate_moves(pos, list);
+    }
+
+    for (int i = 0; i < list.size; i++) {
+        scores[i] = score_move(pos, list.moves[i]);
+    }
+
+    for (int i = 0; i < list.size; i++) {
+        Position next = pos;
+        pick_next(list, scores, i);
+        Move m = list.moves[i];
+
+        if (!next.make_move(m)) {
+            continue;
+        }
+
+        int score = -quiescence(next, -beta, -alpha, ply + 1);
+
+        if (*state.stop_flag) {
+            return 0;
+        }
+
+        if (score > best) {
+            best = score;
+            if (score > alpha) {
+                alpha = score;
+            }
+        }
+
+        if (score >= beta) {
+            return score;
+        }
+    }
+
+    if (best == -INF && in_check) {
+        return -MATE + ply;
+    }
+
+    return best;
+}
+
 int negamax(const Position &pos, int depth, int ply) {
     state.nodes++;
 
@@ -103,6 +188,10 @@ int negamax(const Position &pos, int depth, int ply) {
 }
 
 int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
+    if (depth <= 0) {
+        return quiescence(pos, alpha, beta, ply);
+    }
+
     state.nodes++;
     if (state.nodes % CHECK_TIME_INTERVAL == 0 && state.is_time_limited) {
         if (std::chrono::steady_clock::now() > state.end_time) {
@@ -113,10 +202,6 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
     // The value is never used: every caller sees the flag and returns too.
     if (*state.stop_flag) {
         return 0;
-    }
-
-    if (depth <= 0) {
-        return eval(pos);
     }
 
     // scores[i] belongs to list.moves[i]; pick_next swaps them together.

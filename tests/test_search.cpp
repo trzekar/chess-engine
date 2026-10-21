@@ -3,6 +3,7 @@
 #include "movegen.h"
 #include "search.h"
 #include "uci.h"
+#include <algorithm>
 #include <atomic>
 #include <charconv>
 #include <chrono>
@@ -22,7 +23,7 @@
 
 // The perft positions of tests/perft_positions.epd. negamax_root visits every node once, so
 // at depth 3 its node count is perft(0) + perft(1) + perft(2) + perft(3) of the published
-// counts. Search results are compared with negamax_root in the same positions.
+// counts. Search results are compared with reference_search in the same positions.
 struct Tree {
     const char *fen;
     uint64_t nodes_to_depth_3;
@@ -96,9 +97,10 @@ static Position position_from(const std::string &fen) {
     return pos;
 }
 
-// At depth 0 the search returns the evaluation without looking for moves, so the mated
-// position, 2N - 1 plies from the root, needs one ply of depth left: a mate in N is found at
-// depth 2N. Its score is MATE minus the plies to the mate.
+// A mate in N ends 2N - 1 plies from the root, with the mated side to move. negamax_root
+// evaluates at depth 0 without looking for moves, so it needs one more ply: depth 2N. search
+// finds the mate already at depth 2N - 1: quiescence search sees that the side in check has no
+// legal move. Its score is MATE minus the plies to the mate at both depths.
 static int test_mates(const char *path) {
     std::ifstream file(path);
     if (!file) {
@@ -122,9 +124,12 @@ static int test_mates(const char *path) {
         const int depth = 2 * c.moves;
         const int score = MATE - (2 * c.moves - 1);
 
-        const SearchResult ab = search(pos, depth);
-        require(ab.score == score, "search: wrong mate score", c.fen, ab);
-        require(to_uci(ab.best_move) == c.best, "search: wrong first move", c.fen, ab);
+        for (const int d : {depth - 1, depth}) {
+            const SearchResult ab = search(pos, d);
+            const std::string context = c.fen + "\ndepth " + std::to_string(d);
+            require(ab.score == score, "search: wrong mate score", context, ab);
+            require(to_uci(ab.best_move) == c.best, "search: wrong first move", context, ab);
+        }
 
         // negamax_root takes seconds for a mate in 3 under the sanitizers, so only the mates
         // in 2 are checked with it.
@@ -177,29 +182,158 @@ static void test_negamax_node_counts() {
     }
 }
 
-// With the full window alpha-beta returns the minimax score, and with the same move order
-// and ties broken by the first move, the same move. At depth 1 it visits exactly the same
-// nodes: the root never cuts and its children are leaves. From depth 2 it visits fewer: once
-// the root has raised alpha, replies that refute a later root move cut the rest of its
-// subtree. A root that never raises alpha would still find the right score, only slower.
-// This holds while alpha-beta cutoffs are the only pruning: quiescence search, null move and
-// reductions (steps 4.1, 4.5, 4.6) end the comparison.
-static void test_against_negamax() {
+// An independent search over the same tree as search: alpha-beta to `depth`, then quiescence
+// search with the same rules. Out of check the side to move may stand pat on eval and plays only
+// captures and queen promotions; in check it plays every move, cannot stand pat, and with no
+// legal move is mated. The implementation differs on purpose: fail-hard instead of fail-soft,
+// and its own move ordering (reference_order). Neither changes the score of the root searched
+// with the full window, so it must equal the score of search. A move lost or duplicated by the
+// ordering code of search, or a wrong bound in its quiescence search, makes the two differ.
+
+// Most valuable victim first, then least valuable attacker, quiet moves last in generator
+// order: std::stable_sort on a key, unlike the selection in search.cpp. Only for speed: the
+// score does not depend on the order, but without it quiescence search in Kiwipete takes
+// minutes.
+static void reference_order(const Position &pos, MoveList &list) {
+    const auto key = [&pos](Move m) {
+        if (m.flag() == EN_PASSANT_CAPTURE)
+            return 100 + 10 * PAWN - PAWN;
+        if (m.is_capture())
+            return 100 + 10 * pos.piece_at(m.to()) - pos.piece_at(m.from());
+        return m.flag() == QUEEN_PROMOTION ? 100 + 10 * QUEEN - PAWN : 0;
+    };
+    std::stable_sort(list.moves, list.moves + list.size,
+                     [&key](Move a, Move b) { return key(a) > key(b); });
+}
+
+static int reference_quiescence(const Position &pos, int alpha, int beta, int ply) {
+    if (ply >= MAX_PLY)
+        return std::clamp(eval(pos), alpha, beta);
+
+    const bool in_check = pos.in_check(pos.side_to_move);
+    if (!in_check) {
+        const int stand_pat = eval(pos);
+        if (stand_pat >= beta)
+            return beta;
+        alpha = std::max(alpha, stand_pat);
+    }
+
+    MoveList list;
+    if (in_check)
+        generate_moves(pos, list);
+    else
+        generate_captures(pos, list);
+    reference_order(pos, list);
+
+    bool any_legal = false;
+    for (Move m : list) {
+        Position next = pos;
+        if (!next.make_move(m))
+            continue;
+        any_legal = true;
+        const int score = -reference_quiescence(next, -beta, -alpha, ply + 1);
+        if (score >= beta)
+            return beta;
+        alpha = std::max(alpha, score);
+    }
+
+    if (in_check && !any_legal)
+        return std::clamp(-MATE + ply, alpha, beta);
+    return alpha;
+}
+
+static int reference_alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
+    if (depth <= 0)
+        return reference_quiescence(pos, alpha, beta, ply);
+
+    MoveList list;
+    generate_moves(pos, list);
+    reference_order(pos, list);
+
+    bool any_legal = false;
+    for (Move m : list) {
+        Position next = pos;
+        if (!next.make_move(m))
+            continue;
+        any_legal = true;
+        const int score = -reference_alphabeta(next, -beta, -alpha, depth - 1, ply + 1);
+        if (score >= beta)
+            return beta;
+        alpha = std::max(alpha, score);
+    }
+
+    if (!any_legal)
+        return std::clamp(pos.in_check(pos.side_to_move) ? -MATE + ply : 0, alpha, beta);
+    return alpha;
+}
+
+// The score of the position searched to `depth` with the full window.
+static int reference_search(const Position &pos, int depth) {
+    return reference_alphabeta(pos, -INF, INF, depth, 0);
+}
+
+// search returns the score of reference_search, and its move is one that reaches that score:
+// its child, searched one ply shallower, scores the same from the other side. The move itself
+// may differ from the first best move in generator order, as move ordering breaks ties.
+static void test_against_reference() {
     for (const Tree &t : TREES) {
         const Position pos = position_from(t.fen);
         for (int depth = 1; depth <= 3; ++depth) {
-            const SearchResult nm = negamax_root(pos, depth);
+            const int expected = reference_search(pos, depth);
             const SearchResult ab = search(pos, depth);
             const std::string context = std::string(t.fen) + "\ndepth " + std::to_string(depth) +
-                                        ", negamax_root " + describe(nm);
-            require(ab.score == nm.score, "search: score differs from negamax_root", context, ab);
-            require(ab.best_move == nm.best_move, "search: move differs from negamax_root", context,
+                                        ", reference_search score " + std::to_string(expected);
+            require(ab.score == expected, "search: score differs from reference_search", context,
                     ab);
-            if (depth == 1)
-                require(ab.nodes == nm.nodes, "search: node count differs at depth 1", context, ab);
-            else
-                require(ab.nodes < nm.nodes, "search: no cutoff", context, ab);
+
+            Position next = pos;
+            require(next.make_move(ab.best_move), "search: illegal best move", context, ab);
+            const int move_score = -reference_alphabeta(next, -INF, INF, depth - 1, 1);
+            require(move_score == expected, "search: the best move does not reach the score",
+                    context, ab);
         }
+    }
+}
+
+// Positions where a search that stops at the depth limit goes wrong, each searched to depth 1:
+// the root move is followed directly by quiescence search.
+static void test_quiescence() {
+    // A queen that takes a defended pawn is lost to the recapture. Without quiescence search
+    // d1d5 wins a pawn at depth 1.
+    {
+        const std::string fen = "4k3/8/4p3/3p4/8/8/8/3QK3 w - - 0 1";
+        const SearchResult r = search(position_from(fen), 1);
+        require(r.best_move != Move(D1, D5, CAPTURE), "quiescence: queen takes a defended pawn",
+                fen, r);
+        require(r.score > 500, "quiescence: a queen up should score as one", fen, r);
+    }
+
+    // Material is scored where no capture is left: a queen up is far from a draw, for either
+    // side, and far from a mate. An empty capture list is not a stalemate.
+    for (const std::string fen :
+         {"4k3/8/8/8/8/8/8/Q3K3 w - - 0 1", "q3k3/8/8/8/8/8/8/4K3 b - - 0 1"}) {
+        for (int depth = 1; depth <= 3; ++depth) {
+            const SearchResult r = search(position_from(fen), depth);
+            require(r.score > 800 && r.score < MATE - MAX_PLY,
+                    "quiescence: a queen up is neither a draw nor a mate", fen, r);
+        }
+    }
+
+    // Back rank: Ra8 mates, and the mate is seen at depth 1, after the root move.
+    {
+        const std::string fen = "6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1";
+        const SearchResult r = search(position_from(fen), 1);
+        require(r.best_move == Move(A1, A8, QUIET) && r.score == MATE - 1,
+                "quiescence: missed a mate in 1 at depth 1", fen, r);
+    }
+
+    // The same with h7 empty: after Ra8+ the king escapes to h7, so a side in check with a
+    // quiet way out is not mated.
+    {
+        const std::string fen = "6k1/5pp1/8/8/8/8/8/R5K1 w - - 0 1";
+        const SearchResult r = search(position_from(fen), 1);
+        require(r.score < MATE - MAX_PLY, "quiescence: a check with an escape scored as mate",
+                fen, r);
     }
 }
 
@@ -300,7 +434,8 @@ int main(int argc, char **argv) {
     }
     test_no_legal_moves();
     test_negamax_node_counts();
-    test_against_negamax();
+    test_against_reference();
+    test_quiescence();
     test_think_depth_limit();
     test_think_stopped_at_once();
     test_think_time_limit();

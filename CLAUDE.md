@@ -244,17 +244,24 @@ and to checking that every number matches the recorded results.
   position scores the same as its color-swapped mirror and that passing the move negates the
   score. When the tables change, recompute the known scores by hand from the tables; never
   copy them from the engine's output.
-- `test_search` checks `search` and `negamax_root` in four ways. The ten positions of
+- `test_search` checks `search` and `negamax_root` in five ways. The ten positions of
   `tests/mate_positions.epd` (five mates in 2, five in 3, four with Black to move) are solved
-  by `search` at depth 2N with score `MATE - (2N - 1)` and the only winning first move; the
-  mates in 2 also by `negamax_root`. A checkmated root scores `-MATE` and a stalemated one 0,
-  both with `Move()` and one node. `negamax_root` visits exactly the sum of perft(0..3) in the
-  perft positions. There `search` returns the same score and move as `negamax_root` at depths
-  1 to 3, with the same node count at depth 1 and fewer from depth 2. Every mate was verified
-  with Stockfish and by a full-width check that no other first move mates as fast: never edit
-  a move or a mate distance to make the test pass. The comparison with `negamax_root` holds
-  while alpha-beta cutoffs are the only pruning; quiescence search, null move and reductions
-  end it, and the test must be changed in the same commit. It also checks `think`:
+  by `search` at depths 2N - 1 and 2N with score `MATE - (2N - 1)` and the only winning first
+  move: at 2N - 1 quiescence search sees the last ply, as a side in check without a legal move is
+  mated. The mates in 2 are also solved by `negamax_root` at depth 2N. A checkmated root scores
+  `-MATE` and a stalemated one 0, both with `Move()` and one node. `negamax_root` visits exactly
+  the sum of perft(0..3) in the perft positions. There `search` returns the score of
+  `reference_search` at depths 1 to 3, and its move reaches that score. `reference_search` is an
+  independent fail-hard alpha-beta with quiescence search under the same rules (stand pat and
+  captures out of check, every move and mate detection in check) and its own move ordering, so a
+  move lost by the ordering code or a wrong bound shows up as a different score. Every change to
+  the rules of the search tree (null move, reductions, pruning in quiescence search) changes the
+  reference or limits the comparison in the same commit. Four positions at depth 1 check
+  quiescence search directly: a queen does not take a defended pawn, a queen up scores neither as
+  a draw nor as a mate (both colours, depths 1 to 3), a back-rank mate in 1 is found, and the same
+  check with an escape square is not a mate. Every mate in `mate_positions.epd` was verified with
+  Stockfish and by a full-width check that no other first move mates as fast: never edit a move
+  or a mate distance to make the test pass. It also checks `think`:
   with only a depth limit it returns the score and move of `search`
   at that depth, its node count is the sum over its iterations, and the callback sees every
   depth once in order; a stop flag set before the call still gives the depth-1 move; time
