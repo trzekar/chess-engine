@@ -83,10 +83,6 @@ matchmaking:                       # Outgoing challenges to other bots.
   challenge_increment:
     - 0
     - 2
-  # A new bot shows a provisional rating (3000? on Lichess) far above its strength, and the
-  # strongest bots decline unknown challengers. Until the blitz rating loses its "?", a fixed
-  # range finds opponents who accept; then opponent_rating_difference: 300 can replace it.
-  opponent_min_rating: 1000
-  opponent_max_rating: 2000
+  opponent_rating_difference: 300
   challenge_mode: "rated"          # Rated games give the bot a Lichess rating.
   challenge_filter: coarse         # Do not challenge again a bot that declined.
