@@ -2,13 +2,19 @@
 #include "eval.h"
 #include "movegen.h"
 #include "position.h"
+#include "types.h"
 #include <chrono>
 #include <cstdint>
+#include <utility>
 
 namespace {
 // Reading the clock costs tens of nanoseconds, a node about 140, so the clock is read only
 // once every 2048 nodes: about 0.3 ms between checks at 7 million nodes per second.
 constexpr uint64_t CHECK_TIME_INTERVAL = 2048;
+
+// Fixed bonus that puts every capture and queen promotion ahead of every quiet move. Without
+// it KxP would score 0, the same as a quiet move.
+constexpr int CAPTURE_BONUS = 1000;
 
 struct SearchState {
     uint64_t nodes = 0;
@@ -21,6 +27,42 @@ SearchState state;
 
 // The stop flag of a search without limits: nobody ever sets it.
 std::atomic<bool> never_stop{false};
+
+// Move ordering score, higher is searched first. Captures follow MVV-LVA: the most valuable
+// victim first, and for the same victim the least valuable attacker. The en passant victim is
+// a pawn, though the target square is empty. A quiet queen promotion scores like a pawn taking
+// a queen. Everything else scores 0 and keeps the generator order.
+int score_move(const Position &pos, Move m) {
+    if (m.is_capture()) {
+        const PieceType victim = m.flag() == EN_PASSANT_CAPTURE ? PAWN : pos.piece_at(m.to());
+        const PieceType attacker = pos.piece_at(m.from());
+        return CAPTURE_BONUS + 10 * victim + (KING - attacker);
+    }
+
+    if (m.flag() == QUEEN_PROMOTION) {
+        return CAPTURE_BONUS + 10 * QUEEN + (KING - PAWN);
+    }
+
+    return 0;
+}
+
+// Selection sort, one step at a time: moves the highest-scoring move among i..size-1 to
+// index i, keeping each score next to its move. After a cutoff the rest of the list is
+// never sorted, which is cheaper than sorting it all up front.
+void pick_next(MoveList &list, int scores[], int i) {
+    int max = scores[i];
+    int best_ind = i;
+
+    for (int k = i + 1; k < list.size; k++) {
+        if (scores[k] > max) {
+            max = scores[k];
+            best_ind = k;
+        }
+    }
+
+    std::swap(scores[i], scores[best_ind]);
+    std::swap(list.moves[i], list.moves[best_ind]);
+}
 
 int negamax(const Position &pos, int depth, int ply) {
     state.nodes++;
@@ -77,12 +119,24 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
         return eval(pos);
     }
 
+    // scores[i] belongs to list.moves[i]; pick_next swaps them together.
+    int scores[256];
     int best = -INF;
     MoveList list;
+
     generate_moves(pos, list);
 
-    for (Move m : list) {
+    // Best moves first: the earlier alpha-beta meets the move that refutes this position,
+    // the more of the list it skips.
+    for (int i = 0; i < list.size; i++) {
+        scores[i] = score_move(pos, list.moves[i]);
+    }
+
+    for (int i = 0; i < list.size; i++) {
         Position next = pos;
+        pick_next(list, scores, i);
+        Move m = list.moves[i];
+
         if (!next.make_move(m)) {
             continue;
         }
@@ -131,11 +185,22 @@ std::optional<SearchResult> search_root(const Position &pos, int depth) {
     MoveList list;
     generate_moves(pos, list);
 
+    // scores[i] belongs to list.moves[i]; pick_next swaps them together.
+    int scores[256];
     int alpha = -INF;
     int beta = INF;
 
-    for (Move m : list) {
+    // Best moves first: the earlier alpha-beta meets the move that refutes this position,
+    // the more of the list it skips.
+    for (int i = 0; i < list.size; i++) {
+        scores[i] = score_move(pos, list.moves[i]);
+    }
+
+    for (int i = 0; i < list.size; i++) {
         Position next = pos;
+        pick_next(list, scores, i);
+        Move m = list.moves[i];
+
         if (!next.make_move(m)) {
             continue;
         }
