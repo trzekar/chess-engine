@@ -19,6 +19,11 @@ struct MoveList {
 // own king in check; make_move rejects those.
 void generate_moves(const Position &pos, MoveList &list);
 
+// Appends the pseudo-legal moves that quiescence search plays: every capture (en passant and
+// capture promotions included) and the quiet queen promotion. No castling, no quiet moves, no
+// quiet underpromotions. Like generate_moves, a move may leave the own king in check.
+void generate_captures(const Position &pos, MoveList &list);
+
 std::string to_uci(Move m);
 
 // Finds the generated move whose UCI name is `uci`, or returns Move() if there is none.

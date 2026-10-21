@@ -3,6 +3,10 @@
 #include "bitboard.h"
 
 namespace {
+// What a generator call produces. CAPTURES is the move set of quiescence search:
+// every capture and the quiet queen promotion.
+enum class GenType { ALL, CAPTURES };
+
 // Adds one move from `from` to each square in `targets`, all with the same flag.
 void add_moves(MoveList &list, Square from, Bitboard targets, MoveFlag flag) {
     while (targets) {
@@ -12,7 +16,7 @@ void add_moves(MoveList &list, Square from, Bitboard targets, MoveFlag flag) {
 
 // Pseudo-legal moves of one non-pawn piece type for the side to move.
 // Castling is generated separately.
-void generate_piece_moves(const Position &pos, MoveList &list, PieceType pt) {
+void generate_piece_moves(const Position &pos, MoveList &list, PieceType pt, GenType type) {
     Color piece_color = pos.side_to_move;
     Bitboard enemy_occ = pos.occupancy[~piece_color];
     Bitboard occ = pos.occupied();
@@ -43,13 +47,14 @@ void generate_piece_moves(const Position &pos, MoveList &list, PieceType pt) {
             assert(false && "pawns are generated separately");
         }
 
-        // Captures land on enemy pieces, quiet moves on empty squares.
         add_moves(list, s, attacks & enemy_occ, CAPTURE);
-        add_moves(list, s, attacks & ~occ, QUIET);
+        if (type == GenType::ALL) {
+            add_moves(list, s, attacks & ~occ, QUIET);
+        }
     }
 }
 
-void generate_pawn_moves(const Position &pos, MoveList &list) {
+void generate_pawn_moves(const Position &pos, MoveList &list, GenType type) {
     Color piece_color = pos.side_to_move;
     Bitboard enemy_occ = pos.occupancy[~piece_color];
     Bitboard occ = pos.occupied();
@@ -68,10 +73,12 @@ void generate_pawn_moves(const Position &pos, MoveList &list) {
         bool push_free = !(occ & square_bb(push));
 
         // A pawn that reaches the last rank must promote: four moves per target square.
+        // CAPTURES keeps every capture promotion but of the quiet ones only the queen: a quiet
+        // underpromotion almost never changes the score and only adds nodes.
         if (rank_of(push) == promotion_rank) {
             for (MoveFlag flag :
                  {KNIGHT_PROMOTION, BISHOP_PROMOTION, ROOK_PROMOTION, QUEEN_PROMOTION}) {
-                if (push_free)
+                if (push_free && (type == GenType::ALL || flag == QUEEN_PROMOTION))
                     list.add(Move(s, push, flag));
                 add_moves(list, s, captures, MoveFlag(flag | CAPTURE));
             }
@@ -80,8 +87,9 @@ void generate_pawn_moves(const Position &pos, MoveList &list) {
 
         add_moves(list, s, captures, CAPTURE);
 
-        if (!push_free)
+        if (type == GenType::CAPTURES || !push_free) {
             continue;
+        }
 
         list.add(Move(s, push, QUIET));
 
@@ -143,13 +151,22 @@ void generate_castling(const Position &pos, MoveList &list) {
 } // namespace
 
 void generate_moves(const Position &pos, MoveList &list) {
-    generate_piece_moves(pos, list, KING);
-    generate_piece_moves(pos, list, QUEEN);
-    generate_piece_moves(pos, list, ROOK);
-    generate_piece_moves(pos, list, BISHOP);
-    generate_piece_moves(pos, list, KNIGHT);
-    generate_pawn_moves(pos, list);
+    generate_piece_moves(pos, list, KING, GenType::ALL);
+    generate_piece_moves(pos, list, QUEEN, GenType::ALL);
+    generate_piece_moves(pos, list, ROOK, GenType::ALL);
+    generate_piece_moves(pos, list, BISHOP, GenType::ALL);
+    generate_piece_moves(pos, list, KNIGHT, GenType::ALL);
+    generate_pawn_moves(pos, list, GenType::ALL);
     generate_castling(pos, list);
+}
+
+void generate_captures(const Position &pos, MoveList &list) {
+    generate_piece_moves(pos, list, KING, GenType::CAPTURES);
+    generate_piece_moves(pos, list, QUEEN, GenType::CAPTURES);
+    generate_piece_moves(pos, list, ROOK, GenType::CAPTURES);
+    generate_piece_moves(pos, list, BISHOP, GenType::CAPTURES);
+    generate_piece_moves(pos, list, KNIGHT, GenType::CAPTURES);
+    generate_pawn_moves(pos, list, GenType::CAPTURES);
 }
 
 std::string to_uci(Move m) {

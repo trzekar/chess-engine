@@ -115,6 +115,42 @@ static void test_properties() {
     }
 }
 
+// The moves generate_captures must produce, read off the full list.
+static bool is_qsearch_move(Move m) { return m.is_capture() || m.flag() == QUEEN_PROMOTION; }
+
+// generate_captures returns exactly the moves of generate_moves that pass is_qsearch_move, in
+// the same order. Since generate_moves is checked against python-chess above, this pins the
+// capture generator too. The counts also cover castling: the castling positions have no
+// captures, so a castle that slipped in would make the lists differ.
+static void test_captures() {
+    for (const Expected &e : POSITIONS) {
+        Position pos;
+        assert(parse_fen(e.fen, pos));
+        MoveList all;
+        generate_moves(pos, all);
+        MoveList expected;
+        for (Move m : all)
+            if (is_qsearch_move(m))
+                expected.add(m);
+
+        MoveList captures;
+        generate_captures(pos, captures);
+
+        expect(e.fen, "generate_captures size", captures.size, expected.size, captures);
+        for (int i = 0; i < expected.size; i++)
+            expect(e.fen, "generate_captures move", captures.moves[i].data, expected.moves[i].data,
+                   captures);
+    }
+
+    // A pawn on the seventh rank with a free square ahead and a capture: four capture
+    // promotions and the quiet queen promotion, without the three quiet underpromotions.
+    Position promo;
+    assert(parse_fen("r3k3/1P6/8/8/8/8/8/4K3 w q - 0 1", promo));
+    MoveList list;
+    generate_captures(promo, list);
+    expect("r3k3/1P6/8/8/8/8/8/4K3 w q - 0 1", "promotion captures", list.size, 5, list);
+}
+
 static void test_to_uci() {
     assert(to_uci(Move(E2, E4, DOUBLE_PUSH)) == "e2e4");
     assert(to_uci(Move(E1, G1, KING_CASTLE)) == "e1g1");
@@ -159,6 +195,7 @@ int main() {
     init_attacks();
     test_counts();
     test_properties();
+    test_captures();
     test_to_uci();
     test_parse_uci_move();
     std::puts("test_movegen: OK");

@@ -223,6 +223,8 @@ and to checking that every number matches the recorded results.
   own piece, capture flags). It also checks that `parse_uci_move` turns the UCI
   name of every generated move back into the same move. It fails with the whole move list at depth 1,
   so read it first when perft breaks. Never edit an expected count to make it pass.
+  It also checks that `generate_captures` returns exactly the moves of `generate_moves` that
+  are captures or quiet queen promotions, in the same order.
 - `test_make_move` checks `make_move` in two ways. 20 hand-picked moves, one per rule
   (castling, en passant, promotions, castling rights, counters, four illegal moves),
   compare the FEN after the move with an independent implementation (python-chess).
