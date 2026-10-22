@@ -2,6 +2,7 @@
 #include "eval.h"
 #include "movegen.h"
 #include "search.h"
+#include "tt.h"
 #include "uci.h"
 #include <algorithm>
 #include <atomic>
@@ -97,6 +98,44 @@ static Position position_from(const std::string &fen) {
     return pos;
 }
 
+// A game played from `fen`: the position after `moves` (UCI names, all legal) and the hashes of
+// the positions before it, as uci.cpp passes them to think.
+struct Game {
+    Position pos;
+    std::vector<uint64_t> history;
+};
+
+static Game play(const std::string &fen, std::initializer_list<const char *> moves) {
+    Game game{position_from(fen), {}};
+    for (const char *uci : moves) {
+        const Move m = parse_uci_move(game.pos, uci);
+        Position next = game.pos;
+        if (m == Move() || !next.make_move(m)) {
+            std::cerr << fen << "\nillegal move in the test: " << uci << '\n';
+            std::abort();
+        }
+        game.history.push_back(game.pos.hash);
+        game.pos = next;
+    }
+    return game;
+}
+
+static SearchResult think_to_depth(const Game &game, int depth) {
+    std::atomic<bool> stop{false};
+    SearchLimits limits;
+    limits.depth = depth;
+    return think(game.pos, game.history, limits, stop, [](const FinishedIteration &) {});
+}
+
+// Turns the transposition table off for the life of the object: search and think then visit
+// exactly the tree a fixed-depth reference describes. The table comes back at its default size.
+struct TableOff {
+    TableOff() { tt.resize(0); }
+    ~TableOff() { tt.resize(DEFAULT_HASH_MB); }
+    TableOff(const TableOff &) = delete;
+    TableOff &operator=(const TableOff &) = delete;
+};
+
 // A mate in N ends 2N - 1 plies from the root, with the mated side to move. negamax_root
 // evaluates at depth 0 without looking for moves, so it needs one more ply: depth 2N. search
 // finds the mate already at depth 2N - 1: quiescence search sees that the side in check has no
@@ -129,6 +168,18 @@ static int test_mates(const char *path) {
             const std::string context = c.fen + "\ndepth " + std::to_string(d);
             require(ab.score == score, "search: wrong mate score", context, ab);
             require(to_uci(ab.best_move) == c.best, "search: wrong first move", context, ab);
+        }
+
+        // think keeps the transposition table between calls, as between the moves of a game. The
+        // second call reads the mate back from entries stored at other plies: without the mate
+        // score correction its distance would come out wrong.
+        tt.clear();
+        for (int run = 1; run <= 2; ++run) {
+            const SearchResult r = think_to_depth(Game{pos, {}}, depth);
+            const std::string context = c.fen + "\nthink, run " + std::to_string(run);
+            require(r.score == score, "think: wrong mate score with the table kept", context, r);
+            require(to_uci(r.best_move) == c.best, "think: wrong first move with the table kept",
+                    context, r);
         }
 
         // negamax_root takes seconds for a mate in 3 under the sanitizers, so only the mates
@@ -280,6 +331,9 @@ static int reference_search(const Position &pos, int depth) {
 // its child, searched one ply shallower, scores the same from the other side. The move itself
 // may differ from the first best move in generator order, as move ordering breaks ties.
 static void test_against_reference() {
+    // With the table, an entry searched deeper than needed can give a better score than the
+    // fixed-depth tree: right for play, but no longer the reference's number.
+    const TableOff off;
     for (const Tree &t : TREES) {
         const Position pos = position_from(t.fen);
         require(pos.half_move_counter + 3 < 100, "reference_search knows no fifty-move rule",
@@ -348,6 +402,9 @@ static void test_quiescence() {
 // search(pos, 1), ..., search(pos, depth), since the counter runs on across iterations. The
 // callback sees every depth once, in order, with the clock never going back.
 static void test_think_depth_limit() {
+    // Without the table: think keeps it across iterations while every search() starts empty, so
+    // with it the node counts would not add up.
+    const TableOff off;
     for (const Tree &t : TREES) {
         const Position pos = position_from(t.fen);
         std::atomic<bool> stop{false};
@@ -425,34 +482,6 @@ static void test_think_no_legal_moves() {
             "think: a checkmated root gives Move(), -MATE and one iteration", fen, r);
 }
 
-// A game played from `fen`: the position after `moves` (UCI names, all legal) and the hashes of
-// the positions before it, as uci.cpp passes them to think.
-struct Game {
-    Position pos;
-    std::vector<uint64_t> history;
-};
-
-static Game play(const std::string &fen, std::initializer_list<const char *> moves) {
-    Game game{position_from(fen), {}};
-    for (const char *uci : moves) {
-        const Move m = parse_uci_move(game.pos, uci);
-        Position next = game.pos;
-        if (m == Move() || !next.make_move(m)) {
-            std::cerr << fen << "\nillegal move in the test: " << uci << '\n';
-            std::abort();
-        }
-        game.history.push_back(game.pos.hash);
-        game.pos = next;
-    }
-    return game;
-}
-
-static SearchResult think_to_depth(const Game &game, int depth) {
-    std::atomic<bool> stop{false};
-    SearchLimits limits;
-    limits.depth = depth;
-    return think(game.pos, game.history, limits, stop, [](const FinishedIteration &) {});
-}
 
 // A position that repeats one on the current line or in the game scores 0, and so does one
 // reached after 100 plies without a capture or pawn move, unless it is a checkmate.
@@ -532,6 +561,38 @@ static void test_draws() {
     }
 }
 
+// The table's entries must be sound bounds. A second think at depth 3 in the same position cuts
+// with the entries of the first, stored at the same depths, and so must still give the
+// reference's score. Within 3 plies no position comes back deeper than it was stored, so no
+// entry is better informed than the fixed-depth tree; a bound read the wrong way changes the
+// score.
+static void test_table_bounds() {
+    for (const Tree &t : TREES) {
+        const Position pos = position_from(t.fen);
+        const int expected = reference_search(pos, 3);
+        tt.clear();
+        for (int run = 1; run <= 2; ++run) {
+            const SearchResult r = think_to_depth(Game{pos, {}}, 3);
+            const std::string context = std::string(t.fen) + "\nthink, run " +
+                                        std::to_string(run) + ", reference_search score " +
+                                        std::to_string(expected);
+            require(r.score == expected, "transposition table: think differs from reference_search",
+                    context, r);
+        }
+    }
+}
+
+// Fine #70 (Lasker and Reichhelm, 1901): Kb1 is the only winning move, found at depth 20 and
+// above, where the kings walk the same squares over and over. Without the table the tree at that
+// depth is out of reach; with it, think gets there in a fraction of a second.
+static void test_fine_70() {
+    const std::string fen = "8/k7/3p4/p2P1p2/P2P1P2/8/8/K7 w - - 0 1";
+    tt.clear();
+    const SearchResult r = think_to_depth(play(fen, {}), 26);
+    require(to_uci(r.best_move) == "a1b1" && r.score > 150,
+            "transposition table: Fine #70 not solved at depth 26", fen, r);
+}
+
 int main(int argc, char **argv) {
     if (argc != 2) {
         std::cerr << "usage: test_search <mate_positions.epd>\n";
@@ -550,6 +611,8 @@ int main(int argc, char **argv) {
     test_against_reference();
     test_quiescence();
     test_draws();
+    test_table_bounds();
+    test_fine_70();
     test_think_depth_limit();
     test_think_stopped_at_once();
     test_think_time_limit();

@@ -17,6 +17,7 @@ constexpr uint64_t CHECK_TIME_INTERVAL = 2048;
 // Fixed bonus that puts every capture and queen promotion ahead of every quiet move. Without
 // it KxP would score 0, the same as a quiet move.
 constexpr int CAPTURE_BONUS = 1000;
+constexpr int TT_MOVE_BONUS = 5000;
 
 struct SearchState {
     uint64_t nodes = 0;
@@ -46,7 +47,9 @@ std::atomic<bool> never_stop{false};
 // victim first, and for the same victim the least valuable attacker. The en passant victim is
 // a pawn, though the target square is empty. A quiet queen promotion scores like a pawn taking
 // a queen. Everything else scores 0 and keeps the generator order.
-int score_move(const Position &pos, Move m) {
+int score_move(const Position &pos, Move m, Move tt_m) {
+    if(m == tt_m) return TT_MOVE_BONUS;
+
     if (m.is_capture()) {
         const PieceType victim = m.flag() == EN_PASSANT_CAPTURE ? PAWN : pos.piece_at(m.to());
         const PieceType attacker = pos.piece_at(m.from());
@@ -126,7 +129,7 @@ int quiescence(const Position &pos, int alpha, int beta, int ply) {
     }
 
     for (int i = 0; i < list.size; i++) {
-        scores[i] = score_move(pos, list.moves[i]);
+        scores[i] = score_move(pos, list.moves[i], Move());
     }
 
     for (int i = 0; i < list.size; i++) {
@@ -204,6 +207,7 @@ int negamax(const Position &pos, int depth, int ply) {
 int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
     const int current = state.root_index + ply;
     const int oldest = std::max(0, current - pos.half_move_counter);
+    const int alpha_orig = alpha;
     stack_at(current) = pos.hash;
 
     // A repetition of a position on this line or in the game is a draw: the side that could
@@ -254,9 +258,24 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
         return 0;
     }
 
+    TTEntry entry;
+
+    if(tt.probe(pos.hash, ply, entry) && entry.depth >= depth) {
+        if(entry.bound == Bound::EXACT){
+            return entry.score;
+        }
+        if(entry.bound == Bound::LOWER && entry.score >= beta){
+            return entry.score;
+        }
+        if(entry.bound == Bound::UPPER && entry.score <= alpha){
+            return entry.score;
+        }
+    }
+
     // scores[i] belongs to list.moves[i]; pick_next swaps them together.
     int scores[256];
     int best = -INF;
+    Move best_move;
     MoveList list;
 
     generate_moves(pos, list);
@@ -264,7 +283,7 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
     // Best moves first: the earlier alpha-beta meets the move that refutes this position,
     // the more of the list it skips.
     for (int i = 0; i < list.size; i++) {
-        scores[i] = score_move(pos, list.moves[i]);
+        scores[i] = score_move(pos, list.moves[i], entry.move);
     }
 
     for (int i = 0; i < list.size; i++) {
@@ -287,6 +306,7 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
 
         if (score > best) {
             best = score;
+            best_move = m;
             if (score > alpha) {
                 alpha = score;
             }
@@ -295,6 +315,7 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
         // The opponent already has a better choice higher in the tree and will avoid this
         // position, so one refutation is enough.
         if (score >= beta) {
+            tt.store(pos.hash, m, score, depth, Bound::LOWER, ply);
             return score;
         }
     }
@@ -307,6 +328,12 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
         }
     }
 
+    if(best <= alpha_orig) {
+        tt.store(pos.hash, best_move, best, depth, Bound::UPPER, ply);
+    }
+    else{
+        tt.store(pos.hash, best_move, best, depth, Bound::EXACT, ply);
+    }
     return best;
 }
 
@@ -326,10 +353,13 @@ std::optional<SearchResult> search_root(const Position &pos, int depth) {
     int alpha = -INF;
     int beta = INF;
 
+    TTEntry entry;
+    tt.probe(pos.hash, 0, entry);
+
     // Best moves first: the earlier alpha-beta meets the move that refutes this position,
     // the more of the list it skips.
     for (int i = 0; i < list.size; i++) {
-        scores[i] = score_move(pos, list.moves[i]);
+        scores[i] = score_move(pos, list.moves[i], entry.move);
     }
 
     for (int i = 0; i < list.size; i++) {
@@ -365,6 +395,8 @@ std::optional<SearchResult> search_root(const Position &pos, int depth) {
             result.score = 0;
         }
     }
+
+    tt.store(pos.hash, result.best_move, result.score, depth, Bound::EXACT, 0);
 
     return result;
 }

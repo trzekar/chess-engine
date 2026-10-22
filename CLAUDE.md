@@ -296,7 +296,13 @@ and to checking that every number matches the recorded results.
   capture resets the counter; and on the 100th ply a mate still wins while a check with an
   escape is a draw. `reference_search` knows no draws: the comparison holds because no position
   repeats within 3 plies and the perft positions start far from 100 half-moves, which the test
-  asserts. Every mate in `mate_positions.epd` was verified with
+  asserts. The transposition table is checked in three ways: the comparison with
+  `reference_search` and the `think` iteration checks run with the table off (`TableOff`), since
+  an entry searched deeper than needed may rightly change the fixed-depth score; each mate is
+  also found by two `think` calls in a row with the table kept, so the second reads mates stored
+  at other plies; a second `think` at depth 3 in the perft positions, cutting with the entries of
+  the first, still gives the reference's score; and Fine #70 gives Kb1 with a winning score at
+  depth 26, out of reach without the table. Every mate in `mate_positions.epd` was verified with
   Stockfish and by a full-width check that no other first move mates as fast: never edit a move
   or a mate distance to make the test pass. It also checks `think`:
   with only a depth limit it returns the score and move of `search`
