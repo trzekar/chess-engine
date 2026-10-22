@@ -31,6 +31,13 @@ struct SearchState {
 
 SearchState state;
 
+// The stack is indexed with int: the scan for repetitions walks down from current - 4, which as
+// an unsigned type would wrap around instead of going below zero. Every index used is at least 0.
+uint64_t &stack_at(int i) {
+    assert(i >= 0);
+    return state.hash_stack[static_cast<size_t>(i)];
+}
+
 // The stop flag of a search without limits: nobody ever sets it.
 std::atomic<bool> never_stop{false};
 
@@ -196,7 +203,7 @@ int negamax(const Position &pos, int depth, int ply) {
 int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
     const int current = state.root_index + ply;
     const int oldest = std::max(0, current - pos.half_move_counter);
-    state.hash_stack[current] = pos.hash;
+    stack_at(current) = pos.hash;
 
     // A repetition of a position on this line or in the game is a draw: the side that could
     // have avoided it did not, and will not next time either. Only positions with the same
@@ -204,7 +211,7 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
     // before the last capture or pawn move, which half_move_counter counts back to.
     if (ply > 0) {
         for (int i = current - 4; i >= oldest; i -= 2) {
-            if (pos.hash == state.hash_stack[i]) {
+            if (pos.hash == stack_at(i)) {
                 return 0;
             }
         }
@@ -306,7 +313,7 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
 // stop flag cut the iteration short: some moves are then unsearched or searched only in part, so
 // neither the move nor the score may be used.
 std::optional<SearchResult> search_root(const Position &pos, int depth) {
-    state.hash_stack[state.root_index] = pos.hash;
+    stack_at(state.root_index) = pos.hash;
     state.nodes++;
     SearchResult result = {Move(), -INF, 0};
 
