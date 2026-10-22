@@ -3,3 +3,4 @@ date,commit,depth,nodes,time_ms,nps,compiler,cpu,notes
 2026-10-21,d551966,5,2207821,433,5093776,g++ 15.2.0 (MinGW-W64 UCRT),AMD Ryzen 7 4700U,"release -O3 -march=native; MVV-LVA move ordering; 13.0x fewer nodes than v0.1; single run"
 2026-10-22,69b2cf5,5,6458514,1600,4036134,g++ 15.2.0 (MinGW-W64 UCRT),AMD Ryzen 7 4700U,"release -O3 -march=native; quiescence search, nodes include quiescence nodes, so not comparable with earlier rows; single run"
 2026-10-22,896c50b,5,6430908,1631,3941574,g++ 15.2.0 (MinGW-W64 UCRT),AMD Ryzen 7 4700U,"release -O3 -march=native; repetitions and the fifty-move rule score 0; 0.4% fewer nodes than 69b2cf5; single run"
+2026-10-22,b641458,5,5139416,1373,3743057,g++ 15.2.0 (MinGW-W64 UCRT),AMD Ryzen 7 4700U,"release -O3 -march=native; transposition table, cleared per position; 20.1% fewer nodes than 896c50b; single run"
