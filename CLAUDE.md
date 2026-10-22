@@ -142,6 +142,9 @@ could not be played or was interrupted, and no row was written.
   every build type.
 - Warnings are errors. Fix the cause. Do not silence a warning with a cast,
   a pragma or by dropping a flag unless asked.
+- GCC and Clang warn differently: `-Wsign-conversion` is in `WARNING_FLAGS` because only
+  Clang's `-Wconversion` includes it. A build that passes with MinGW can still fail in CI's
+  Clang job; read its log before assuming the code is wrong.
 
 When you add a target, a test or a script, document its command here in the
 same change.

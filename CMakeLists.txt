@@ -26,8 +26,10 @@ else()
       "-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer")
 endif()
 
+# -Wsign-conversion is listed on its own: Clang's -Wconversion includes it, GCC's does not, so
+# without it MinGW at home accepts what Clang in CI rejects.
 set(WARNING_FLAGS
-  -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wformat=2
+  -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion -Wformat=2
   -Wfloat-equal -Wold-style-cast -Wnull-dereference -Werror)
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
