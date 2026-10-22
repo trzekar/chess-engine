@@ -244,9 +244,14 @@ and to checking that every number matches the recorded results.
   non-zero and distinct, the start position hashes to a pinned value (the same with every
   compiler, as the keys are computed at compile time), `parse_fen` stores the hash computed
   from scratch, and each feature (side to move, castling rights, en passant file, a piece on a
-  square) changes the hash by exactly its key while the move counters change nothing. Never
-  edit the pinned value to make the test pass unless the generator, seed or key order was
-  changed on purpose.
+  square) changes the hash by exactly its key while the move counters change nothing. It is
+  also the oracle for the incremental hash of `make_move`: random games from six positions
+  (castling, rights lost on a captured rook, en passant, promotions), 2000 plies each with a
+  fixed seed, check after every legal move, over 100 000 of them, that `pos.hash` equals
+  `compute_hash(pos)`; on a mismatch it prints the position and the move. Move orders that
+  transpose give the same hash, a knight shuffle returns to the start hash, and positions that
+  differ only in castling rights or the en passant square do not. Never edit the pinned value
+  to make the test pass unless the generator, seed or key order was changed on purpose.
 - `test_eval` checks `eval` in three ways. Five known scores, computed by hand from the
   PeSTO tables, pin the pure endgame (phase 0), the pure middlegame (phase 24), the blend
   between them, the clamp after a promotion and the sign for the side to move. Two

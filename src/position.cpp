@@ -255,6 +255,9 @@ bool Position::make_move(Move m) {
 
     // Every move clears the old en passant square and counts toward the fifty-move rule.
     // A double push sets a new square below, a capture or a pawn move resets the counter.
+    if (ep_square != NO_SQUARE) {
+        hash ^= ZOBRIST.ep_file[file_of(ep_square)];
+    }
     ep_square = NO_SQUARE;
     half_move_counter++;
 
@@ -263,28 +266,41 @@ bool Position::make_move(Move m) {
             // The only capture whose victim is not on `to`: the pawn stands on the file of `to`
             // and the rank of `from`.
             Square captured_s = make_square(file_of(to), rank_of(from));
+            hash ^= ZOBRIST.piece[them][PAWN][captured_s];
             remove_piece(them, piece_at(captured_s), captured_s);
         } else {
+            hash ^= ZOBRIST.piece[them][piece_at(to)][to];
             remove_piece(them, piece_at(to), to);
         }
         half_move_counter = 0;
     }
 
+    hash ^= ZOBRIST.piece[us][pt][from];
     remove_piece(us, pt, from);
 
     if (m.is_promotion()) {
+        hash ^= ZOBRIST.piece[us][m.promotion_type()][to];
         put_piece(us, m.promotion_type(), to);
     } else {
+        hash ^= ZOBRIST.piece[us][pt][to];
         put_piece(us, pt, to);
     }
 
     // The king has already moved like any other piece; castling only adds the rook's jump.
     if (flag == QUEEN_CASTLE) {
-        remove_piece(us, ROOK, make_square(0, rank_of(from)));
-        put_piece(us, ROOK, make_square(3, rank_of(from)));
+        Square from_sq = make_square(0, rank_of(from));
+        Square to_sq = make_square(3, rank_of(from));
+        hash ^= ZOBRIST.piece[us][ROOK][from_sq];
+        hash ^= ZOBRIST.piece[us][ROOK][to_sq];
+        remove_piece(us, ROOK, from_sq);
+        put_piece(us, ROOK, to_sq);
     } else if (flag == KING_CASTLE) {
-        remove_piece(us, ROOK, make_square(7, rank_of(from)));
-        put_piece(us, ROOK, make_square(5, rank_of(from)));
+        Square from_sq = make_square(7, rank_of(from));
+        Square to_sq = make_square(5, rank_of(from));
+        hash ^= ZOBRIST.piece[us][ROOK][from_sq];
+        hash ^= ZOBRIST.piece[us][ROOK][to_sq];
+        remove_piece(us, ROOK, from_sq);
+        put_piece(us, ROOK, to_sq);
     }
 
     if (pt == PAWN) {
@@ -294,14 +310,18 @@ bool Position::make_move(Move m) {
     // The en passant square is the one the pawn skipped, halfway between `from` and `to`.
     if (flag == DOUBLE_PUSH) {
         ep_square = Square((from + to) / 2);
+        hash ^= ZOBRIST.ep_file[file_of(ep_square)];
     }
 
+    hash ^= ZOBRIST.castling[castling_rights];
     castling_rights &= CASTLING_MASK[from] & CASTLING_MASK[to];
+    hash ^= ZOBRIST.castling[castling_rights];
 
     if (us == BLACK) {
         move_number++;
     }
 
+    hash ^= ZOBRIST.side;
     side_to_move = ~side_to_move;
 
     return !is_attacked(lsb(pieces[us][KING]), them);

@@ -1,14 +1,18 @@
 #include "attacks.h"
+#include "movegen.h"
 #include "position.h"
 #include "zobrist.h"
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
+#include <initializer_list>
 #include <iostream>
+#include <random>
 #include <set>
+#include <string>
 
-// Checks the keys and compute_hash. make_move's incremental update is checked against
-// compute_hash once it exists (step 4.2, block 5).
+// Checks the keys, compute_hash, and the incremental update of the hash in make_move against
+// compute_hash.
 
 static Position from_fen(const char *fen) {
     Position pos;
@@ -90,12 +94,107 @@ static void test_features() {
     assert(from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 37 52").hash == h);
 }
 
+// Plays `moves` (UCI names) from `fen`; every move must be legal.
+static Position play(const char *fen, std::initializer_list<const char *> moves) {
+    Position pos = from_fen(fen);
+    for (const char *uci : moves) {
+        const Move m = parse_uci_move(pos, uci);
+        assert(m != Move());
+        assert(pos.make_move(m));
+    }
+    return pos;
+}
+
+// On a mismatch, prints where the walk went wrong before failing: the position before the move
+// and the move. Its FEN and `engine divide 1` show which feature was XOR-ed wrongly.
+static void expect_hash(const Position &before, Move m, const Position &after) {
+    if (after.hash == compute_hash(after))
+        return;
+    std::cerr << "incremental hash differs from compute_hash\nbefore: " << to_fen(before)
+              << "\nmove:   " << to_uci(m) << "\nafter:  " << to_fen(after) << '\n';
+    assert(false);
+}
+
+// Random games: after every legal move the hash make_move keeps equals the hash computed from
+// scratch. The start positions cover castling (both sides, and rights lost when a rook is
+// captured on its corner), en passant and promotions with and without capture. A fixed seed
+// makes every run play the same moves; std::mt19937_64 gives the same numbers on every
+// compiler, and the move is picked with % rather than a distribution, which may differ.
+static void test_random_walks() {
+    static const char *const STARTS[] = {
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+        "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+        "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+        "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
+        "r3k2r/1P6/8/8/8/8/1p6/R3K2R w KQkq - 0 1",
+    };
+    std::mt19937_64 rng(20261022);
+    int moves_checked = 0;
+    for (const char *fen : STARTS) {
+        Position pos = from_fen(fen);
+        for (int ply = 0; ply < 2000; ++ply) {
+            MoveList list;
+            generate_moves(pos, list);
+            Position legal[256];
+            Move played[256];
+            int count = 0;
+            for (Move m : list) {
+                Position next = pos;
+                if (next.make_move(m)) {
+                    legal[count] = next;
+                    played[count] = m;
+                    ++count;
+                }
+            }
+            // Every legal move is checked, not only the one played: in 12 000 plies that is
+            // over 300 000 moves of every kind.
+            for (int i = 0; i < count; ++i)
+                expect_hash(pos, played[i], legal[i]);
+            moves_checked += count;
+            // Mate or stalemate: start the game again.
+            if (count == 0) {
+                pos = from_fen(fen);
+                continue;
+            }
+            pos = legal[rng() % uint64_t(count)];
+        }
+    }
+    assert(moves_checked > 100000);
+}
+
+// Two move orders reaching the same position give the same hash, and four knight moves that
+// come back give the hash of the start: what repetition detection relies on.
+static void test_transpositions() {
+    const char *start = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    assert(play(start, {"g1f3", "g8f6", "b1c3"}).hash ==
+           play(start, {"b1c3", "g8f6", "g1f3"}).hash);
+    // Neither order ends with a double push, so neither has an en passant square.
+    assert(play(start, {"e2e4", "b8c6", "g1f3", "g8f6"}).hash ==
+           play(start, {"g1f3", "g8f6", "e2e4", "b8c6"}).hash);
+    assert(play(start, {"g1f3", "g8f6", "f3g1", "f6g8"}).hash == from_fen(start).hash);
+
+    // The same squares after 1. e4 e5 2. Ke2 Ke7 3. Ke1 Ke8, but without castling rights: a
+    // different position, so a different hash.
+    assert(play(start, {"e2e4", "e7e5", "e1e2", "e8e7", "e2e1", "e7e8"}).hash !=
+           play(start, {"e2e4", "e7e5"}).hash);
+
+    // e4 then e5 directly, or each pawn in two steps: the same squares, but only the second
+    // order has no en passant square at the end.
+    const Position direct = play(start, {"e2e4", "g8f6", "g1f3", "f6g8", "f3g1", "e7e5"});
+    const Position stepwise = play(start, {"e2e3", "e7e6", "e3e4", "e6e5"});
+    assert(direct.hash != stepwise.hash);
+    assert((direct.hash ^ stepwise.hash) == ZOBRIST.ep_file[file_of(E6)]);
+}
+
 int main() {
     init_attacks();
     test_keys();
     test_pinned_value();
     test_parse_fen_sets_hash();
     test_features();
+    test_random_walks();
+    test_transpositions();
     std::puts("test_zobrist: OK");
     return 0;
 }
