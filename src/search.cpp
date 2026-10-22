@@ -17,13 +17,18 @@ constexpr uint64_t CHECK_TIME_INTERVAL = 2048;
 // Move ordering bands, highest first, wide apart so that no band can reach into the next:
 //   the move from the transposition table       TT_MOVE_SCORE
 //   captures and the quiet queen promotion      CAPTURE_SCORE + MVV-LVA (0 to 45)
-//   killers                          below CAPTURE_SCORE
-//   other quiet moves                           0, history later, kept below the killers
+//   the two killers of the ply                  KILLER_1_SCORE, KILLER_2_SCORE
+//   other quiet moves                           their history, below MAX_HISTORY_SCORE
 // Without the capture band KxP would score 0, the same as a quiet move.
 constexpr int TT_MOVE_SCORE = 2'000'000;
 constexpr int CAPTURE_SCORE = 1'000'000;
 constexpr int KILLER_1_SCORE = 900'000;
 constexpr int KILLER_2_SCORE = 800'000;
+
+// History grows by depth * depth at every quiet cutoff. When an entry reaches this, the side's
+// whole table is halved: the order between its moves stays, old information fades, and the
+// values stay far below the killers.
+constexpr int MAX_HISTORY_SCORE = 100'000;
 
 // For score_moves where killers do not apply: quiescence search plays captures only, and the
 // root has no siblings to learn from.
@@ -41,6 +46,9 @@ struct SearchState {
     int root_index = 0;
     // Two quiet moves per ply that caused a cutoff, the newer first.
     Move killers[MAX_PLY + 1][2] = {};
+    // Every quiet cutoff also counts in the history of its side, weighted by the
+    // depth left: a cutoff high in the tree saves far more than one near the leaves.
+    int history[COLOR_NB][64][64] = {};
 };
 
 SearchState state;
@@ -58,8 +66,8 @@ std::atomic<bool> never_stop{false};
 // Move ordering score, higher is searched first. The move from the transposition table comes
 // first. Captures follow MVV-LVA: the most valuable victim first, and for the same victim the
 // least valuable attacker. The en passant victim is a pawn, though the target square is empty. A
-// quiet queen promotion scores like a pawn taking a queen. Everything else scores 0 and keeps the
-// generator order.
+// quiet queen promotion scores like a pawn taking a queen. A killer of this ply comes next, the
+// newer first, then every other quiet move by its history.
 int score_move(const Position &pos, Move m, Move tt_move, const Move killers[2]) {
     if (m == tt_move) {
         return TT_MOVE_SCORE;
@@ -67,8 +75,7 @@ int score_move(const Position &pos, Move m, Move tt_move, const Move killers[2])
 
     if (m == killers[0]) {
         return KILLER_1_SCORE;
-    }
-    else if (m == killers[1]) {
+    } else if (m == killers[1]) {
         return KILLER_2_SCORE;
     }
 
@@ -82,7 +89,7 @@ int score_move(const Position &pos, Move m, Move tt_move, const Move killers[2])
         return CAPTURE_SCORE + 10 * QUEEN + (KING - PAWN);
     }
 
-    return 0;
+    return state.history[pos.side_to_move][m.from()][m.to()];
 }
 
 // Scores every move of `list` into `scores`: scores[i] belongs to list.moves[i], and pick_next
@@ -344,9 +351,20 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
         if (score >= beta) {
             // A quiet move that refutes this position will likely refute its siblings too: it
             // becomes the newer killer of this ply, and the newer one before it the older.
-            if (!m.is_capture() && !m.is_promotion() && m != state.killers[ply][0]) {
-                state.killers[ply][1] = state.killers[ply][0];
-                state.killers[ply][0] = m;
+            if (!m.is_capture() && !m.is_promotion()) {
+                if (m != state.killers[ply][0]) {
+                    state.killers[ply][1] = state.killers[ply][0];
+                    state.killers[ply][0] = m;
+                }
+
+                state.history[pos.side_to_move][m.from()][m.to()] += depth * depth;
+                if (state.history[pos.side_to_move][m.from()][m.to()] >= MAX_HISTORY_SCORE) {
+                    for (int from = 0; from < 64; from++) {
+                        for (int to = 0; to < 64; to++) {
+                            state.history[pos.side_to_move][from][to] /= 2;
+                        }
+                    }
+                }
             }
             tt.store(pos.hash, m, score, depth, Bound::LOWER, ply);
             return score;
