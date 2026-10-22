@@ -190,6 +190,10 @@ and to checking that every number matches the recorded results.
 - Generated output (build directories, PGNs, logs) is never committed.
 - Data copied from elsewhere keeps a comment naming its source, like the PeSTO tables in
   `src/eval.cpp`, and the README credits it.
+- The transposition table `tt` (`src/tt.h`) is global and starts at `DEFAULT_HASH_MB`. The UCI
+  option Hash resizes it and `ucinewgame` empties it; between the moves of a game it is kept.
+  `search()` empties it first, so tests and the bench depend on the position and depth alone;
+  `think` does not.
 - `init_attacks()` and `init_eval()` fill lookup tables and must run once before use: in
   `main` and at the top of every test that needs them. A missing `init_eval` crashes
   nothing, every score is simply 0.
@@ -255,6 +259,11 @@ and to checking that every number matches the recorded results.
   transpose give the same hash, a knight shuffle returns to the start hash, and positions that
   differ only in castling rights or the en passant square do not. Never edit the pinned value
   to make the test pass unless the generator, seed or key order was changed on purpose.
+- `test_tt` checks the transposition table on its own: the number of entries for a size in MB
+  (rounded down to a power of two, 0 for no table), `probe` giving back what `store` wrote for
+  the same key only, a new entry replacing the old one at its index, the mate score correction
+  (a mate found at ply 3 and read at ply 7, for and against the side to move, other scores
+  unchanged), and `clear` and `resize` leaving no entry behind.
 - `test_eval` checks `eval` in three ways. Five known scores, computed by hand from the
   PeSTO tables, pin the pure endgame (phase 0), the pure middlegame (phase 24), the blend
   between them, the clamp after a promotion and the sign for the side to move. Two
@@ -299,7 +308,10 @@ and to checking that every number matches the recorded results.
   every output line timestamped: the `uci` handshake, `info` lines for every depth, `go
   movetime` and `go wtime` kept within their budget, `isready` answered and `bestmove`
   withheld during `go infinite` until `stop`, `quit` during a search, `score mate 2`,
-  `mate 1` and `mate -1`, and a bad FEN or an illegal move leaving the position as it was.
+  `mate 1` and `mate -1`, a bad FEN or an illegal move leaving the position as it was, and
+  the Hash option: announced before `uciok`, `setoption name Hash` resizing the table within 1
+  and 1024 MB (an invalid value keeps it), an unknown option answered with an info string,
+  and `ucinewgame` emptying the table.
   Timing checks allow 400 ms of slack for the sanitizers; they catch a search that ignores
   the clock, not one a few milliseconds late.
 - `test_bench` checks the bench: every position parses, writes back to the same FEN and has a

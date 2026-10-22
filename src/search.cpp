@@ -2,6 +2,7 @@
 #include "eval.h"
 #include "movegen.h"
 #include "position.h"
+#include "tt.h"
 #include "types.h"
 #include <algorithm>
 #include <chrono>
@@ -411,6 +412,9 @@ SearchResult search(const Position &pos, int depth) {
     state = SearchState{};
     state.stop_flag = &never_stop;
     state.hash_stack.resize(MAX_PLY + 1);
+    // An empty table makes the result depend on `pos` and `depth` alone, as tests and the bench
+    // need. think keeps the table: between the moves of a game its entries are worth keeping.
+    tt.clear();
     return *search_root(pos, depth);
 }
 

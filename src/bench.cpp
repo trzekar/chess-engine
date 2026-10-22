@@ -15,9 +15,8 @@ uint64_t bench(int depth, std::ostream &out) {
             out << "invalid bench position: " << BENCH_POSITIONS[i] << '\n';
             return 0;
         }
-        // Every position starts from a clean search: search() resets its counters. Once the
-        // transposition table exists (step 4.3), clear it here as well, or each count would
-        // depend on the positions searched before it.
+        // Every position starts from a clean search: search() resets its counters and empties the
+        // transposition table, so each count is independent of the positions searched before it.
         const uint64_t nodes = search(pos, depth).nodes;
         total += nodes;
         out << "position " << (i + 1 < 10 ? " " : "") << i + 1 << "  nodes " << nodes << '\n';

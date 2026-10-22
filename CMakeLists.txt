@@ -89,22 +89,29 @@ target_include_directories(test_eval PRIVATE src)
 target_compile_options(test_eval PRIVATE ${WARNING_FLAGS} -UNDEBUG)
 add_test(NAME test_eval COMMAND test_eval)
 
+add_executable(test_tt tests/test_tt.cpp src/tt.cpp)
+target_include_directories(test_tt PRIVATE src)
+target_compile_options(test_tt PRIVATE ${WARNING_FLAGS} -UNDEBUG)
+add_test(NAME test_tt COMMAND test_tt)
+
 add_executable(test_search tests/test_search.cpp
-  src/search.cpp src/eval.cpp src/position.cpp src/attacks.cpp src/movegen.cpp)
+  src/search.cpp src/tt.cpp src/eval.cpp src/position.cpp src/attacks.cpp src/movegen.cpp)
 target_include_directories(test_search PRIVATE src)
 target_compile_options(test_search PRIVATE ${WARNING_FLAGS} -UNDEBUG)
 add_test(NAME test_search
   COMMAND test_search ${CMAKE_SOURCE_DIR}/tests/mate_positions.epd)
 
 add_executable(test_uci tests/test_uci.cpp
-  src/uci.cpp src/search.cpp src/eval.cpp src/position.cpp src/attacks.cpp src/movegen.cpp)
+  src/uci.cpp src/search.cpp src/tt.cpp src/eval.cpp src/position.cpp src/attacks.cpp
+  src/movegen.cpp)
 target_include_directories(test_uci PRIVATE src)
 target_compile_options(test_uci PRIVATE ${WARNING_FLAGS} -UNDEBUG)
 target_link_libraries(test_uci PRIVATE Threads::Threads)
 add_test(NAME test_uci COMMAND test_uci)
 
 add_executable(test_bench tests/test_bench.cpp
-  src/bench.cpp src/search.cpp src/eval.cpp src/position.cpp src/attacks.cpp src/movegen.cpp)
+  src/bench.cpp src/search.cpp src/tt.cpp src/eval.cpp src/position.cpp src/attacks.cpp
+  src/movegen.cpp)
 target_include_directories(test_bench PRIVATE src)
 target_compile_options(test_bench PRIVATE ${WARNING_FLAGS} -UNDEBUG)
 add_test(NAME test_bench COMMAND test_bench)

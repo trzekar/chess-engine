@@ -3,6 +3,7 @@
 #include "movegen.h"
 #include "position.h"
 #include "timeman.h"
+#include "tt.h"
 #include "uci.h"
 #include <chrono>
 #include <condition_variable>
@@ -211,9 +212,14 @@ static void test_handshake() {
     if (lines.size() < 3 || !starts_with(lines[0].text, "id name ") ||
         !starts_with(lines[1].text, "id author ") || lines.back().text != "uciok")
         fail("uci must answer id name, id author, then uciok", lines);
+    const std::string hash = "option name Hash type spin default 16 min 1 max 1024";
+    bool hash_option = false;
+    for (const Line &l : lines)
+        hash_option = hash_option || l.text == hash;
+    if (!hash_option)
+        fail("uci must announce the Hash option before uciok", lines);
 
     // Unknown commands are ignored; the engine still answers.
-    s.send("setoption name Hash value 16");
     s.send("xyzzy");
     s.send("isready");
     s.wait_for("readyok", lines.size());
@@ -366,6 +372,47 @@ static void test_bad_position() {
     require_legal_bestmove(best, position_after(START_FEN.data(), {"e2e4", "e7e5"}), s.lines());
 }
 
+// setoption name Hash resizes the table, within 1 and 1024 MB; ucinewgame empties it. Each
+// command is followed by isready, so the engine has handled it before the table is read here.
+static void test_hash_option() {
+    Session s;
+    const auto set_hash = [&s](const std::string &value) {
+        const size_t from = s.line_count();
+        s.send("setoption name Hash value " + value);
+        s.send("isready");
+        s.wait_for("readyok", from);
+    };
+    const auto entries = [](size_t mb) { return mb * 1024 * 1024 / sizeof(TTEntry); };
+
+    set_hash("4");
+    if (tt.table.size() != entries(4))
+        fail("setoption name Hash value 4 must give 4 MB of entries", s.lines());
+    set_hash("0");
+    if (tt.table.size() != entries(1))
+        fail("a Hash below the minimum must give 1 MB", s.lines());
+    set_hash("abc");
+    if (tt.table.size() != entries(1))
+        fail("an invalid Hash value must keep the table", s.lines());
+
+    size_t from = s.line_count();
+    s.send("setoption name Threads value 4");
+    s.wait_for("info string unknown option: Threads", from);
+
+    // An entry left from the last game is gone after ucinewgame. The engine is idle here (it has
+    // answered readyok), so the test may write to the table itself.
+    const Position start = position_after(START_FEN.data(), {});
+    tt.store(start.hash, Move(), 0, 1, Bound::EXACT, 0);
+    from = s.line_count();
+    s.send("ucinewgame");
+    s.send("isready");
+    s.wait_for("readyok", from);
+    TTEntry e;
+    if (tt.probe(start.hash, 0, e))
+        fail("ucinewgame must empty the transposition table", s.lines());
+
+    set_hash(std::to_string(DEFAULT_HASH_MB));
+}
+
 int main() {
     init_attacks();
     init_eval();
@@ -377,6 +424,7 @@ int main() {
     test_quit_while_thinking();
     test_mate_scores();
     test_bad_position();
+    test_hash_option();
     std::cout << "test_uci: OK\n";
     return 0;
 }

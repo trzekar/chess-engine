@@ -3,6 +3,7 @@
 #include "position.h"
 #include "search.h"
 #include "timeman.h"
+#include "tt.h"
 #include <algorithm>
 #include <atomic>
 #include <cassert>
@@ -78,6 +79,11 @@ std::optional<int64_t> parse_number(const std::string &word) {
     return std::max<int64_t>(value, 0);
 }
 
+// The limits of the Hash option, in MB. The default is DEFAULT_HASH_MB from tt.h. A GUI may ask
+// for more than a small machine has: the bot's server sets its own value in deploy/config.yml.
+constexpr int64_t MIN_HASH_MB = 1;
+constexpr int64_t MAX_HASH_MB = 1024;
+
 class Uci {
 public:
     explicit Uci(std::ostream &out) : out_(out) {
@@ -98,13 +104,21 @@ public:
         if (command == "uci") {
             out_.send("id name " + std::string(ENGINE_NAME));
             out_.send("id author " + std::string(ENGINE_AUTHOR));
+            out_.send("option name Hash type spin default " + std::to_string(DEFAULT_HASH_MB) +
+                      " min " + std::to_string(MIN_HASH_MB) + " max " +
+                      std::to_string(MAX_HASH_MB));
             out_.send("uciok");
         } else if (command == "isready") {
             // Answered by this thread, so also while the search thread is thinking.
             out_.send("readyok");
-        } else if (command == "ucinewgame") {
-            // Nothing carries over between games yet; the transposition table will (step 4.3).
+        } else if (command == "setoption") {
             stop_search();
+            set_option(words);
+        } else if (command == "ucinewgame") {
+            // Entries from the last game would only take room: a new game starts empty. Between
+            // the moves of one game the table is kept, as its entries are about to be needed.
+            stop_search();
+            tt.clear();
         } else if (command == "position") {
             stop_search();
             set_position(words);
@@ -121,6 +135,32 @@ public:
     }
 
 private:
+    // setoption name <name> value <value>. Hash is the only option: the table gets the new size
+    // in MB, clamped to the advertised limits, and starts empty. The search is stopped before,
+    // since its thread reads the table. Anything else is answered with an info string.
+    void set_option(std::istringstream &words) {
+        std::string word, name, value;
+        words >> word;
+        if (word != "name") {
+            out_.send("info string expected setoption name <name> value <value>");
+            return;
+        }
+        while (words >> word && word != "value")
+            name += (name.empty() ? "" : " ") + word;
+        words >> value;
+
+        if (name != "Hash") {
+            out_.send("info string unknown option: " + name);
+            return;
+        }
+        const std::optional<int64_t> mb = parse_number(value);
+        if (!mb) {
+            out_.send("info string invalid Hash value: " + value);
+            return;
+        }
+        tt.resize(static_cast<size_t>(std::clamp(*mb, MIN_HASH_MB, MAX_HASH_MB)));
+    }
+
     // position [startpos | fen <six fields>] [moves m1 m2 ...]. A bad FEN keeps the previous
     // position and history; the moves are played up to the first illegal one, and the hash of
     // every position before a played move goes into the history.
