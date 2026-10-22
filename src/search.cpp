@@ -17,11 +17,17 @@ constexpr uint64_t CHECK_TIME_INTERVAL = 2048;
 // Move ordering bands, highest first, wide apart so that no band can reach into the next:
 //   the move from the transposition table       TT_MOVE_SCORE
 //   captures and the quiet queen promotion      CAPTURE_SCORE + MVV-LVA (0 to 45)
-//   killers (step 4.4)                          below CAPTURE_SCORE
-//   other quiet moves                           0, history later (step 4.4), kept below the killers
+//   killers                          below CAPTURE_SCORE
+//   other quiet moves                           0, history later, kept below the killers
 // Without the capture band KxP would score 0, the same as a quiet move.
 constexpr int TT_MOVE_SCORE = 2'000'000;
 constexpr int CAPTURE_SCORE = 1'000'000;
+constexpr int KILLER_1_SCORE = 900'000;
+constexpr int KILLER_2_SCORE = 800'000;
+
+// For score_moves where killers do not apply: quiescence search plays captures only, and the
+// root has no siblings to learn from.
+constexpr Move NO_KILLERS[2] = {};
 
 struct SearchState {
     uint64_t nodes = 0;
@@ -33,6 +39,8 @@ struct SearchState {
     // every index below it belongs to one of its ancestors.
     std::vector<uint64_t> hash_stack = {};
     int root_index = 0;
+    // Two quiet moves per ply that caused a cutoff, the newer first.
+    Move killers[MAX_PLY + 1][2] = {};
 };
 
 SearchState state;
@@ -52,9 +60,16 @@ std::atomic<bool> never_stop{false};
 // least valuable attacker. The en passant victim is a pawn, though the target square is empty. A
 // quiet queen promotion scores like a pawn taking a queen. Everything else scores 0 and keeps the
 // generator order.
-int score_move(const Position &pos, Move m, Move tt_move) {
+int score_move(const Position &pos, Move m, Move tt_move, const Move killers[2]) {
     if (m == tt_move) {
         return TT_MOVE_SCORE;
+    }
+
+    if (m == killers[0]) {
+        return KILLER_1_SCORE;
+    }
+    else if (m == killers[1]) {
+        return KILLER_2_SCORE;
     }
 
     if (m.is_capture()) {
@@ -72,9 +87,10 @@ int score_move(const Position &pos, Move m, Move tt_move) {
 
 // Scores every move of `list` into `scores`: scores[i] belongs to list.moves[i], and pick_next
 // keeps them together. `tt_move` is Move() where there is none, as in quiescence search.
-void score_moves(const Position &pos, const MoveList &list, Move tt_move, int scores[]) {
+void score_moves(const Position &pos, const MoveList &list, Move tt_move, int scores[],
+                 const Move killers[2]) {
     for (int i = 0; i < list.size; i++) {
-        scores[i] = score_move(pos, list.moves[i], tt_move);
+        scores[i] = score_move(pos, list.moves[i], tt_move, killers);
     }
 }
 
@@ -143,7 +159,7 @@ int quiescence(const Position &pos, int alpha, int beta, int ply) {
         generate_moves(pos, list);
     }
 
-    score_moves(pos, list, Move(), scores);
+    score_moves(pos, list, Move(), scores, NO_KILLERS);
 
     for (int i = 0; i < list.size; i++) {
         Position next = pos;
@@ -273,14 +289,14 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
 
     TTEntry entry;
 
-    if(tt.probe(pos.hash, ply, entry) && entry.depth >= depth) {
-        if(entry.bound == Bound::EXACT){
+    if (tt.probe(pos.hash, ply, entry) && entry.depth >= depth) {
+        if (entry.bound == Bound::EXACT) {
             return entry.score;
         }
-        if(entry.bound == Bound::LOWER && entry.score >= beta){
+        if (entry.bound == Bound::LOWER && entry.score >= beta) {
             return entry.score;
         }
-        if(entry.bound == Bound::UPPER && entry.score <= alpha){
+        if (entry.bound == Bound::UPPER && entry.score <= alpha) {
             return entry.score;
         }
     }
@@ -295,7 +311,7 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
 
     // Best moves first: the earlier alpha-beta meets the move that refutes this position,
     // the more of the list it skips.
-    score_moves(pos, list, entry.move, scores);
+    score_moves(pos, list, entry.move, scores, state.killers[ply]);
 
     for (int i = 0; i < list.size; i++) {
         Position next = pos;
@@ -326,6 +342,12 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
         // The opponent already has a better choice higher in the tree and will avoid this
         // position, so one refutation is enough.
         if (score >= beta) {
+            // A quiet move that refutes this position will likely refute its siblings too: it
+            // becomes the newer killer of this ply, and the newer one before it the older.
+            if (!m.is_capture() && !m.is_promotion() && m != state.killers[ply][0]) {
+                state.killers[ply][1] = state.killers[ply][0];
+                state.killers[ply][0] = m;
+            }
             tt.store(pos.hash, m, score, depth, Bound::LOWER, ply);
             return score;
         }
@@ -339,10 +361,9 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
         }
     }
 
-    if(best <= alpha_orig) {
+    if (best <= alpha_orig) {
         tt.store(pos.hash, best_move, best, depth, Bound::UPPER, ply);
-    }
-    else{
+    } else {
         tt.store(pos.hash, best_move, best, depth, Bound::EXACT, ply);
     }
     return best;
@@ -369,7 +390,7 @@ std::optional<SearchResult> search_root(const Position &pos, int depth) {
 
     // Best moves first: the earlier alpha-beta meets the move that refutes this position,
     // the more of the list it skips.
-    score_moves(pos, list, entry.move, scores);
+    score_moves(pos, list, entry.move, scores, NO_KILLERS);
 
     for (int i = 0; i < list.size; i++) {
         Position next = pos;

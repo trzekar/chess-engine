@@ -397,13 +397,14 @@ static void test_quiescence() {
     }
 }
 
-// With only a depth limit, think runs the same iterations as search: the last one returns the
-// score and move of search(pos, depth), and the node count adds up the counts of
-// search(pos, 1), ..., search(pos, depth), since the counter runs on across iterations. The
-// callback sees every depth once, in order, with the clock never going back.
+// With only a depth limit, think runs depths 1 to `depth` and returns the last: its score is that
+// of search(pos, depth), and its move reaches that score. Killers and history live across the
+// iterations of one think while every search() starts afresh, so the move order, the node counts
+// and, between moves of equal score, the move itself may differ; the score cannot. The node
+// counter runs on across iterations, so the counts the callback sees only grow. The callback
+// sees every depth once, in order, with the clock never going back.
 static void test_think_depth_limit() {
-    // Without the table: think keeps it across iterations while every search() starts empty, so
-    // with it the node counts would not add up.
+    // Without the table: with it, entries searched deeper than needed may change the score.
     const TableOff off;
     for (const Tree &t : TREES) {
         const Position pos = position_from(t.fen);
@@ -414,13 +415,12 @@ static void test_think_depth_limit() {
         const SearchResult r =
             think(pos, {}, limits, stop, [&](const FinishedIteration &it) { seen.push_back(it); });
 
-        uint64_t nodes = 0;
-        for (int depth = 1; depth <= 3; ++depth)
-            nodes += search(pos, depth).nodes;
         const SearchResult ab = search(pos, 3);
-        require(r.score == ab.score && r.best_move == ab.best_move,
-                "think: differs from search at the same depth", t.fen, r);
-        require(r.nodes == nodes, "think: node count is not the sum over its iterations", t.fen, r);
+        require(r.score == ab.score, "think: differs from search at the same depth", t.fen, r);
+        Position next = pos;
+        require(next.make_move(r.best_move) &&
+                    -reference_alphabeta(next, -INF, INF, 2, 1) == r.score,
+                "think: the move does not reach the score", t.fen, r);
         require(!stop, "think: set the stop flag without a time limit", t.fen, r);
 
         require(seen.size() == 3, "think: one callback per depth", t.fen, r);
@@ -429,6 +429,8 @@ static void test_think_depth_limit() {
                     seen[i].result);
             require(i == 0 || seen[i].time >= seen[i - 1].time, "think: the clock went back", t.fen,
                     seen[i].result);
+            require(i == 0 || seen[i].result.nodes > seen[i - 1].result.nodes,
+                    "think: the node count went back", t.fen, seen[i].result);
         }
         require(seen.back().result.best_move == r.best_move && seen.back().result.nodes == r.nodes,
                 "think: the result is not the last iteration", t.fen, r);

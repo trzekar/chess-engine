@@ -305,9 +305,10 @@ and to checking that every number matches the recorded results.
   depth 26, out of reach without the table. Every mate in `mate_positions.epd` was verified with
   Stockfish and by a full-width check that no other first move mates as fast: never edit a move
   or a mate distance to make the test pass. It also checks `think`:
-  with only a depth limit it returns the score and move of `search`
-  at that depth, its node count is the sum over its iterations, and the callback sees every
-  depth once in order; a stop flag set before the call still gives the depth-1 move; time
+  with only a depth limit it returns the score of `search` at that depth with a move that
+  reaches it (killers and history live across its iterations, so its move order, node counts
+  and choice between equal moves may differ from a fresh `search`), its node count only grows
+  from one iteration to the next, and the callback sees every depth once in order; a stop flag set before the call still gives the depth-1 move; time
   budgets of 0, 50 and 200 ms are kept and end with the flag set; a checkmated root gives
   `Move()` after one iteration.
 - `test_uci` drives `uci_loop` as a GUI does, with commands sent while the engine thinks and
