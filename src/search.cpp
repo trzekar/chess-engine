@@ -14,10 +14,14 @@ namespace {
 // once every 2048 nodes: about 0.3 ms between checks at 7 million nodes per second.
 constexpr uint64_t CHECK_TIME_INTERVAL = 2048;
 
-// Fixed bonus that puts every capture and queen promotion ahead of every quiet move. Without
-// it KxP would score 0, the same as a quiet move.
-constexpr int CAPTURE_BONUS = 1000;
-constexpr int TT_MOVE_BONUS = 5000;
+// Move ordering bands, highest first, wide apart so that no band can reach into the next:
+//   the move from the transposition table       TT_MOVE_SCORE
+//   captures and the quiet queen promotion      CAPTURE_SCORE + MVV-LVA (0 to 45)
+//   killers (step 4.4)                          below CAPTURE_SCORE
+//   other quiet moves                           0, history later (step 4.4), kept below the killers
+// Without the capture band KxP would score 0, the same as a quiet move.
+constexpr int TT_MOVE_SCORE = 2'000'000;
+constexpr int CAPTURE_SCORE = 1'000'000;
 
 struct SearchState {
     uint64_t nodes = 0;
@@ -43,24 +47,35 @@ uint64_t &stack_at(int i) {
 // The stop flag of a search without limits: nobody ever sets it.
 std::atomic<bool> never_stop{false};
 
-// Move ordering score, higher is searched first. Captures follow MVV-LVA: the most valuable
-// victim first, and for the same victim the least valuable attacker. The en passant victim is
-// a pawn, though the target square is empty. A quiet queen promotion scores like a pawn taking
-// a queen. Everything else scores 0 and keeps the generator order.
-int score_move(const Position &pos, Move m, Move tt_m) {
-    if(m == tt_m) return TT_MOVE_BONUS;
+// Move ordering score, higher is searched first. The move from the transposition table comes
+// first. Captures follow MVV-LVA: the most valuable victim first, and for the same victim the
+// least valuable attacker. The en passant victim is a pawn, though the target square is empty. A
+// quiet queen promotion scores like a pawn taking a queen. Everything else scores 0 and keeps the
+// generator order.
+int score_move(const Position &pos, Move m, Move tt_move) {
+    if (m == tt_move) {
+        return TT_MOVE_SCORE;
+    }
 
     if (m.is_capture()) {
         const PieceType victim = m.flag() == EN_PASSANT_CAPTURE ? PAWN : pos.piece_at(m.to());
         const PieceType attacker = pos.piece_at(m.from());
-        return CAPTURE_BONUS + 10 * victim + (KING - attacker);
+        return CAPTURE_SCORE + 10 * victim + (KING - attacker);
     }
 
     if (m.flag() == QUEEN_PROMOTION) {
-        return CAPTURE_BONUS + 10 * QUEEN + (KING - PAWN);
+        return CAPTURE_SCORE + 10 * QUEEN + (KING - PAWN);
     }
 
     return 0;
+}
+
+// Scores every move of `list` into `scores`: scores[i] belongs to list.moves[i], and pick_next
+// keeps them together. `tt_move` is Move() where there is none, as in quiescence search.
+void score_moves(const Position &pos, const MoveList &list, Move tt_move, int scores[]) {
+    for (int i = 0; i < list.size; i++) {
+        scores[i] = score_move(pos, list.moves[i], tt_move);
+    }
 }
 
 // Selection sort, one step at a time: moves the highest-scoring move among i..size-1 to
@@ -128,9 +143,7 @@ int quiescence(const Position &pos, int alpha, int beta, int ply) {
         generate_moves(pos, list);
     }
 
-    for (int i = 0; i < list.size; i++) {
-        scores[i] = score_move(pos, list.moves[i], Move());
-    }
+    score_moves(pos, list, Move(), scores);
 
     for (int i = 0; i < list.size; i++) {
         Position next = pos;
@@ -282,9 +295,7 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
 
     // Best moves first: the earlier alpha-beta meets the move that refutes this position,
     // the more of the list it skips.
-    for (int i = 0; i < list.size; i++) {
-        scores[i] = score_move(pos, list.moves[i], entry.move);
-    }
+    score_moves(pos, list, entry.move, scores);
 
     for (int i = 0; i < list.size; i++) {
         Position next = pos;
@@ -358,9 +369,7 @@ std::optional<SearchResult> search_root(const Position &pos, int depth) {
 
     // Best moves first: the earlier alpha-beta meets the move that refutes this position,
     // the more of the list it skips.
-    for (int i = 0; i < list.size; i++) {
-        scores[i] = score_move(pos, list.moves[i], entry.move);
-    }
+    score_moves(pos, list, entry.move, scores);
 
     for (int i = 0; i < list.size; i++) {
         Position next = pos;
