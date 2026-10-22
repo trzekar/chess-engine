@@ -8,12 +8,14 @@ to results/matches.csv. The PGN goes to results/pgn/ (ignored by git).
 
 By default the match is an SPRT with elo0 = 0, elo1 = 10, alpha = beta = 0.05 in logistic
 Elo: it stops once the result is statistically clear, or after 10 000 games without a
-verdict. With --games N it plays exactly N games without SPRT, as the A/A check of a version
-against itself does. The time control is 8+0.08; --tc changes it for an experiment, and the
-row records it.
+verdict. --elo0 and --elo1 move the bounds: --elo0 -10 --elo1 0 tests that a change loses no
+strength, for a change that is not meant to gain any (a refactor, a speed-up, the groundwork for
+a later feature). With --games N it plays exactly N games without SPRT, as the A/A check of a
+version against itself does. The time control is 8+0.08; --tc changes it for an experiment, and
+the row records it.
 
 Usage:
-  python scripts/match.py NEW OLD [--games N] [--tc 8+0.08] [--notes TEXT]
+  python scripts/match.py NEW OLD [--games N | --elo0 E0 --elo1 E1] [--tc 8+0.08] [--notes TEXT]
 
 The settings of the machine live in match.local.json in the repository root, which is not
 committed:
@@ -148,8 +150,9 @@ def engine_names(new, old):
     return (new, old) if new != old else (new, old + "-2")
 
 
-def fastchess_command(config, new_engine, old_engine, names, tc, games, pgn):
-    """games is None for an SPRT, or the exact number of games to play."""
+def fastchess_command(config, new_engine, old_engine, names, tc, games, pgn, elo0=ELO0,
+                      elo1=ELO1):
+    """games is None for an SPRT between elo0 and elo1, or the exact number of games to play."""
     rounds = (games if games is not None else MAX_GAMES) // 2
     book = Path(config["book"])
     command = [
@@ -164,8 +167,8 @@ def fastchess_command(config, new_engine, old_engine, names, tc, games, pgn):
         "-pgnout", f"file={pgn}",
     ]
     if games is None:
-        command += ["-sprt", f"elo0={ELO0}", f"elo1={ELO1}", f"alpha={ALPHA}", f"beta={BETA}",
-                    "model=logistic"]
+        command += ["-sprt", f"elo0={elo0:g}", f"elo1={elo1:g}", f"alpha={ALPHA}",
+                    f"beta={BETA}", "model=logistic"]
     return command
 
 
@@ -247,6 +250,10 @@ def main():
     parser.add_argument("old", help="the version it is compared with")
     parser.add_argument("--games", type=int,
                         help="play exactly this many games (an even number) without SPRT")
+    parser.add_argument("--elo0", type=float, default=ELO0,
+                        help=f"SPRT lower bound in Elo, {ELO0} by default")
+    parser.add_argument("--elo1", type=float, default=ELO1,
+                        help=f"SPRT upper bound in Elo, {ELO1} by default")
     parser.add_argument("--tc", default=TC, help=f"time control, {TC} unless experimenting")
     parser.add_argument("--notes", default="", help="free text for the notes column")
     args = parser.parse_args()
@@ -254,6 +261,10 @@ def main():
     try:
         if args.games is not None and (args.games < 2 or args.games % 2):
             raise MatchError("--games must be an even number of at least 2")
+        if args.games is not None and (args.elo0, args.elo1) != (ELO0, ELO1):
+            raise MatchError("--elo0 and --elo1 set an SPRT; --games plays a fixed match")
+        if args.elo0 >= args.elo1:
+            raise MatchError("--elo0 must be below --elo1")
         config = load_config(CONFIG)
         commits = resolve(args.new), resolve(args.old)
         if git("status", "--porcelain", "--untracked-files=no").strip():
@@ -269,7 +280,7 @@ def main():
         PGN_DIR.mkdir(parents=True, exist_ok=True)
         pgn = PGN_DIR / f"{stamp}_{safe}.pgn"
         command = fastchess_command(config, new_engine, old_engine, names, args.tc, args.games,
-                                    pgn)
+                                    pgn, args.elo0, args.elo1)
 
         # fastchess output is shown as it comes and kept for the result block at the end.
         lines = []
@@ -297,7 +308,7 @@ def main():
             "old": args.old, "old_commit": commits[1][:7],
             "tc": args.tc, "book": Path(config["book"]).name,
             "concurrency": config["concurrency"],
-            "test": "fixed" if args.games is not None else f"sprt {ELO0} {ELO1}",
+            "test": "fixed" if args.games is not None else f"sprt {args.elo0:g} {args.elo1:g}",
             **report,
             "failed_games": failed, "notes": args.notes,
         }

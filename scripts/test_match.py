@@ -150,6 +150,14 @@ class Command(unittest.TestCase):
         self.assertIn("name=v0.2", cmd)
         self.assertIn("name=v0.1", cmd)
 
+    def test_sprt_bounds(self):
+        # A non-regression test: the change must not lose more than 10 Elo.
+        cmd = match.fastchess_command(CONFIG, Path("/b/new"), Path("/b/old"), ("v0.3", "v0.2"),
+                                      "8+0.08", None, Path("/r/x.pgn"), -10.0, 0.0)
+        sprt = cmd[cmd.index("-sprt") + 1:]
+        self.assertEqual(sprt[:2], ["elo0=-10", "elo1=0"])
+        self.assertEqual(cmd[cmd.index("-rounds") + 1], "5000")
+
     def test_fixed(self):
         cmd = match.fastchess_command(CONFIG, Path("/b/e"), Path("/b/e"), ("v0.1", "v0.1-2"),
                                       "8+0.08", 200, Path("/r/x.pgn"))

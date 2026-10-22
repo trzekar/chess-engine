@@ -363,7 +363,8 @@ SearchResult search(const Position &pos, int depth) {
     return *search_root(pos, depth);
 }
 
-SearchResult think(const Position &pos, const SearchLimits &limits, std::atomic<bool> &stop_flag,
+SearchResult think(const Position &pos, [[maybe_unused]] const std::vector<uint64_t> &history,
+                   const SearchLimits &limits, std::atomic<bool> &stop_flag,
                    const IterationCallback &on_iteration) {
     assert(limits.depth >= 1);
     const auto start = std::chrono::steady_clock::now();

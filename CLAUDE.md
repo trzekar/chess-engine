@@ -116,10 +116,13 @@ uncommitted changes belong to neither) in Release from clean copies of their sou
 them with fastchess at 8+0.08 with the opening book, each opening twice with colours swapped,
 and appends one row to `results/matches.csv`. By default the match is an SPRT with
 elo0=0, elo1=10, alpha=beta=0.05 in logistic Elo, capped at 10 000 games; `--games N` plays
-exactly N games without SPRT. The PGN goes to `results/pgn/`.
+exactly N games without SPRT. A change that is not meant to gain strength (a refactor, a
+speed-up, groundwork for a later step) is tested for no regression instead, with
+`--elo0 -10 --elo1 0`; the `test` column records the bounds. The PGN goes to `results/pgn/`.
 
 ```sh
 python3 scripts/match.py v0.2 v0.1
+python3 scripts/match.py zobrist v0.2-qsearch --elo0 -10 --elo1 0
 python3 scripts/match.py v0.1 v0.1 --games 200
 ```
 
@@ -288,7 +291,8 @@ and to checking that every number matches the recorded results.
   counts. It runs at depth 3 to stay fast under the sanitizers.
 - `test_match` checks `match.py` without fastchess and without a build: reading the result
   block of real fastchess output (SPRT with H1 and with H0 accepted, SPRT without a verdict,
-  fixed matches, inf and nan), the fastchess command line, the CSV file and the settings file.
+  fixed matches, inf and nan), the fastchess command line with the default and with custom SPRT
+  bounds, the CSV file and the settings file.
   When fastchess changes its output, add a block copied from a real run to the test.
 - Before a tag, 100 self-play games at 8+0.08 must pass `check_games.py` (see Build).
 

@@ -332,8 +332,8 @@ static void test_quiescence() {
     {
         const std::string fen = "6k1/5pp1/8/8/8/8/8/R5K1 w - - 0 1";
         const SearchResult r = search(position_from(fen), 1);
-        require(r.score < MATE - MAX_PLY, "quiescence: a check with an escape scored as mate",
-                fen, r);
+        require(r.score < MATE - MAX_PLY, "quiescence: a check with an escape scored as mate", fen,
+                r);
     }
 }
 
@@ -349,7 +349,7 @@ static void test_think_depth_limit() {
         SearchLimits limits;
         limits.depth = 3;
         const SearchResult r =
-            think(pos, limits, stop, [&](const FinishedIteration &it) { seen.push_back(it); });
+            think(pos, {}, limits, stop, [&](const FinishedIteration &it) { seen.push_back(it); });
 
         uint64_t nodes = 0;
         for (int depth = 1; depth <= 3; ++depth)
@@ -378,7 +378,7 @@ static void test_think_stopped_at_once() {
     const Position pos = position_from(fen);
     std::atomic<bool> stop{true};
     std::vector<int> depths;
-    const SearchResult r = think(pos, SearchLimits{}, stop,
+    const SearchResult r = think(pos, {}, SearchLimits{}, stop,
                                  [&](const FinishedIteration &it) { depths.push_back(it.depth); });
     require(depths == std::vector<int>{1}, "think: a set flag must stop after depth 1", fen, r);
     require(r.best_move == search(pos, 1).best_move, "think: not the depth-1 move", fen, r);
@@ -396,8 +396,8 @@ static void test_think_time_limit() {
         limits.time = std::chrono::milliseconds(budget);
         int last_depth = 0;
         const auto start = std::chrono::steady_clock::now();
-        const SearchResult r =
-            think(pos, limits, stop, [&](const FinishedIteration &it) { last_depth = it.depth; });
+        const SearchResult r = think(pos, {}, limits, stop,
+                                     [&](const FinishedIteration &it) { last_depth = it.depth; });
         const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(
                               std::chrono::steady_clock::now() - start)
                               .count();
@@ -413,7 +413,7 @@ static void test_think_no_legal_moves() {
     const std::string fen = "rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3";
     std::atomic<bool> stop{false};
     int calls = 0;
-    const SearchResult r = think(position_from(fen), SearchLimits{}, stop,
+    const SearchResult r = think(position_from(fen), {}, SearchLimits{}, stop,
                                  [&](const FinishedIteration &) { ++calls; });
     require(r.best_move == Move() && r.score == -MATE && calls == 1,
             "think: a checkmated root gives Move(), -MATE and one iteration", fen, r);

@@ -122,7 +122,8 @@ public:
 
 private:
     // position [startpos | fen <six fields>] [moves m1 m2 ...]. A bad FEN keeps the previous
-    // position; the moves are played up to the first illegal one.
+    // position and history; the moves are played up to the first illegal one, and the hash of
+    // every position before a played move goes into the history.
     void set_position(std::istringstream &words) {
         std::string word;
         words >> word;
@@ -145,6 +146,7 @@ private:
             return;
         }
 
+        std::vector<uint64_t> history;
         // `word` is now "moves" or the last word read; only "moves" starts a move list.
         if (word == "moves") {
             while (words >> word) {
@@ -154,10 +156,12 @@ private:
                     out_.send("info string illegal move: " + word);
                     break;
                 }
+                history.push_back(pos.hash);
                 pos = next;
             }
         }
         pos_ = pos;
+        history_ = std::move(history);
     }
 
     // go [wtime btime winc binc movestogo depth movetime infinite]. Other parameters (nodes,
@@ -202,9 +206,11 @@ private:
 
         // think may have set the flag at the end of the previous search; it must start clear.
         stop_ = false;
-        search_thread_ = std::thread([this, pos = pos_, limits, infinite] {
+        // The thread gets its own copies: the next `position` command replaces pos_ and history_
+        // only after stop_search has joined it, but a copy needs no such reasoning.
+        search_thread_ = std::thread([this, pos = pos_, history = history_, limits, infinite] {
             const SearchResult result =
-                think(pos, limits, stop_,
+                think(pos, history, limits, stop_,
                       [this](const FinishedIteration &it) { out_.send(info_line(it)); });
             // In `go infinite` the answer waits for `stop`, even when the search ended earlier
             // (a mate found, MAX_PLY reached): UCI allows bestmove only after stop there.
@@ -223,6 +229,8 @@ private:
 
     Output out_;
     Position pos_;
+    // Hashes of the positions of the game before pos_, oldest first (see think).
+    std::vector<uint64_t> history_;
     // Written by this thread (stop) and by the search thread (time out), read by the search.
     std::atomic<bool> stop_{false};
     std::thread search_thread_;
