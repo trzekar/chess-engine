@@ -3,6 +3,7 @@
 #include "movegen.h"
 #include "position.h"
 #include "types.h"
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <utility>
@@ -21,6 +22,11 @@ struct SearchState {
     std::atomic<bool> *stop_flag = nullptr;
     std::chrono::steady_clock::time_point end_time = {};
     bool is_time_limited = false;
+    // Hashes of the game before the root, then one per ply of the current line: the root at
+    // root_index, a node at root_index + ply. A node overwrites its own index on entry, so
+    // every index below it belongs to one of its ancestors.
+    std::vector<uint64_t> hash_stack = {};
+    int root_index = 0;
 };
 
 SearchState state;
@@ -188,6 +194,42 @@ int negamax(const Position &pos, int depth, int ply) {
 }
 
 int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
+    const int current = state.root_index + ply;
+    const int oldest = std::max(0, current - pos.half_move_counter);
+    state.hash_stack[current] = pos.hash;
+
+    // A repetition of a position on this line or in the game is a draw: the side that could
+    // have avoided it did not, and will not next time either. Only positions with the same
+    // side to move can match, so every second ply; none can repeat within 2 plies, and none
+    // before the last capture or pawn move, which half_move_counter counts back to.
+    if (ply > 0) {
+        for (int i = current - 4; i >= oldest; i -= 2) {
+            if (pos.hash == state.hash_stack[i]) {
+                return 0;
+            }
+        }
+    }
+
+    // The fifty-move rule: 100 plies without a capture or pawn move are a draw. A checkmate
+    // given on the move that reaches 100 still wins, so a side in check gets the draw only
+    // when it has a legal move. Rare enough that the loop costs nothing.
+    if (pos.half_move_counter >= 100) {
+        if (!pos.in_check(pos.side_to_move)) {
+            return 0;
+        }
+
+        MoveList list;
+        generate_moves(pos, list);
+        for (Move m : list) {
+            Position next = pos;
+            if (next.make_move(m)) {
+                return 0;
+            }
+        }
+
+        return -MATE + ply;
+    }
+
     if (depth <= 0) {
         return quiescence(pos, alpha, beta, ply);
     }
@@ -264,6 +306,7 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
 // stop flag cut the iteration short: some moves are then unsearched or searched only in part, so
 // neither the move nor the score may be used.
 std::optional<SearchResult> search_root(const Position &pos, int depth) {
+    state.hash_stack[state.root_index] = pos.hash;
     state.nodes++;
     SearchResult result = {Move(), -INF, 0};
 
@@ -360,10 +403,11 @@ SearchResult search(const Position &pos, int depth) {
     // completes and the optional always holds a result.
     state = SearchState{};
     state.stop_flag = &never_stop;
+    state.hash_stack.resize(MAX_PLY + 1);
     return *search_root(pos, depth);
 }
 
-SearchResult think(const Position &pos, [[maybe_unused]] const std::vector<uint64_t> &history,
+SearchResult think(const Position &pos, const std::vector<uint64_t> &history,
                    const SearchLimits &limits, std::atomic<bool> &stop_flag,
                    const IterationCallback &on_iteration) {
     assert(limits.depth >= 1);
@@ -373,6 +417,9 @@ SearchResult think(const Position &pos, [[maybe_unused]] const std::vector<uint6
     // Depth 1 runs with no time limit and a flag nobody sets, so it always completes and think
     // always has a move to return.
     state.stop_flag = &never_stop;
+    state.hash_stack = history;
+    state.hash_stack.resize(history.size() + MAX_PLY + 1);
+    state.root_index = static_cast<int>(history.size());
 
     SearchResult result;
 

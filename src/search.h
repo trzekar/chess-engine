@@ -25,7 +25,8 @@ struct SearchResult {
     // From the point of view of the side to move.
     int score = 0;
 
-    // Every call of the search is a node, the root and the leaves included.
+    // Every call of the search is a node, the root and the leaves included, except a draw by
+    // repetition or the fifty-move rule, found before the node is searched.
     uint64_t nodes = 0;
 };
 
