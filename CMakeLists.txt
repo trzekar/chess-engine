@@ -41,7 +41,7 @@ endif()
 find_package(Threads REQUIRED)
 
 add_executable(engine src/main.cpp src/position.cpp src/attacks.cpp src/movegen.cpp src/perft.cpp
-  src/eval.cpp src/search.cpp src/uci.cpp src/bench.cpp)
+  src/eval.cpp src/search.cpp src/uci.cpp src/bench.cpp src/tt.cpp)
 target_compile_options(engine PRIVATE ${WARNING_FLAGS})
 target_link_libraries(engine PRIVATE Threads::Threads)
 
