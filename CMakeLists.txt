@@ -58,6 +58,11 @@ target_include_directories(test_fen PRIVATE src)
 target_compile_options(test_fen PRIVATE ${WARNING_FLAGS} -UNDEBUG)
 add_test(NAME test_fen COMMAND test_fen)
 
+add_executable(test_zobrist tests/test_zobrist.cpp src/position.cpp src/attacks.cpp)
+target_include_directories(test_zobrist PRIVATE src)
+target_compile_options(test_zobrist PRIVATE ${WARNING_FLAGS} -UNDEBUG)
+add_test(NAME test_zobrist COMMAND test_zobrist)
+
 add_executable(test_attacks tests/test_attacks.cpp src/position.cpp src/attacks.cpp)
 target_include_directories(test_attacks PRIVATE src)
 target_compile_options(test_attacks PRIVATE ${WARNING_FLAGS} -UNDEBUG)

@@ -1,4 +1,5 @@
 #include "position.h"
+#include "zobrist.h"
 #include <cassert>
 #include <cstdio>
 #include <string>
@@ -75,7 +76,8 @@ static void test_roundtrip() {
         assert(parse_fen(fen, pos));
         check_consistency(pos);
         assert(to_fen(pos) == fen);
-        assert(pos.hash == 0);
+        // parse_fen stores the hash computed from scratch; tests/test_zobrist.cpp checks it.
+        assert(pos.hash == compute_hash(pos));
     }
 }
 

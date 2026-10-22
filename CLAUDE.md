@@ -187,6 +187,8 @@ and to checking that every number matches the recorded results.
 - `init_attacks()` and `init_eval()` fill lookup tables and must run once before use: in
   `main` and at the top of every test that needs them. A missing `init_eval` crashes
   nothing, every score is simply 0.
+- The Zobrist keys are `constexpr` and need no initialisation. `parse_fen` sets `pos.hash`
+  with `compute_hash`; `make_move` keeps it up to date incrementally.
 - The search runs on its own thread and never prints: `think` reports each completed depth
   through its callback. Every line the engine writes goes through `Output::send` in
   `src/uci.cpp`, which holds a mutex and flushes, so lines from the two threads never mix and
@@ -235,6 +237,13 @@ and to checking that every number matches the recorded results.
 - Expected FENs record the en passant square after every double push, as the FEN
   standard does. Stockfish's `d` command shows it only when an en passant capture is
   possible, so a FEN copied from Stockfish can differ in that field.
+- `test_zobrist` checks the keys of `src/zobrist.h` and `compute_hash`: all 793 keys are
+  non-zero and distinct, the start position hashes to a pinned value (the same with every
+  compiler, as the keys are computed at compile time), `parse_fen` stores the hash computed
+  from scratch, and each feature (side to move, castling rights, en passant file, a piece on a
+  square) changes the hash by exactly its key while the move counters change nothing. Never
+  edit the pinned value to make the test pass unless the generator, seed or key order was
+  changed on purpose.
 - `test_eval` checks `eval` in three ways. Five known scores, computed by hand from the
   PeSTO tables, pin the pure endgame (phase 0), the pure middlegame (phase 24), the blend
   between them, the clamp after a promotion and the sign for the side to move. Two

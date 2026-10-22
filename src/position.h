@@ -1,6 +1,6 @@
 #pragma once
-#include "types.h"
 #include "bitboard.h"
+#include "types.h"
 #include <string>
 #include <string_view>
 
@@ -13,10 +13,11 @@ struct Position {
     Square ep_square = NO_SQUARE;
     uint8_t half_move_counter = 0;
     uint16_t move_number = 1;
+    // Zobrist hash (zobrist.h): set by parse_fen, kept up to date by make_move.
     uint64_t hash = 0;
 
     Position() {
-        for (PieceType &p : piece_on){
+        for (PieceType &p : piece_on) {
             p = NO_PIECE_TYPE;
         }
     }
@@ -25,7 +26,7 @@ struct Position {
         assert(piece_on[s] == NO_PIECE_TYPE);
         pieces[c][pt] |= square_bb(s);
         occupancy[c] |= square_bb(s);
-        piece_on[s] = pt; 
+        piece_on[s] = pt;
     }
 
     void remove_piece(Color c, PieceType pt, Square s) {
@@ -38,9 +39,7 @@ struct Position {
 
     PieceType piece_at(Square s) const { return piece_on[s]; }
 
-    Bitboard occupied() const {
-        return (occupancy[WHITE] | occupancy[BLACK]); 
-    }
+    Bitboard occupied() const { return (occupancy[WHITE] | occupancy[BLACK]); }
 
     bool is_attacked(Square s, Color by) const;
 
@@ -50,8 +49,7 @@ struct Position {
     bool make_move(Move m);
 };
 
-constexpr std::string_view START_FEN =
-    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+constexpr std::string_view START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 bool parse_fen(std::string_view fen, Position &pos);
 std::string to_fen(const Position &pos);

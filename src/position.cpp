@@ -1,5 +1,6 @@
 #include "position.h"
 #include "attacks.h"
+#include "zobrist.h"
 
 #include <charconv>
 #include <iostream>
@@ -158,6 +159,7 @@ bool parse_fen(std::string_view fen, Position &pos) {
         result.move_number = uint16_t(moves);
     }
 
+    result.hash = compute_hash(result);
     pos = result;
     return true;
 }
@@ -238,7 +240,7 @@ bool Position::is_attacked(Square s, Color by) const {
     return false;
 }
 
-bool Position::in_check(Color c) const{
+bool Position::in_check(Color c) const {
     Bitboard king_bb = pieces[c][KING];
     return is_attacked(lsb(king_bb), ~c);
 }
