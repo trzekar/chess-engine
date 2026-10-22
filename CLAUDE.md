@@ -276,7 +276,15 @@ and to checking that every number matches the recorded results.
   reference or limits the comparison in the same commit. Four positions at depth 1 check
   quiescence search directly: a queen does not take a defended pawn, a queen up scores neither as
   a draw nor as a mate (both colours, depths 1 to 3), a back-rank mate in 1 is found, and the same
-  check with an escape square is not a mate. Every mate in `mate_positions.epd` was verified with
+  check with an escape square is not a mate. Draws are checked in seven positions: a forced
+  perpetual check (Qf1+ Kh2 Qf2+ Kh1) scores 0 from depth 4 on for the side a queen and two
+  rooks behind; with the game's history passed to `think`, the losing side repeats a position of
+  the game and the winning side avoids it, while the same position without history is lost; a
+  half-move counter of 99 makes every quiet move a draw and one of 98 does so a ply later; a
+  capture resets the counter; and on the 100th ply a mate still wins while a check with an
+  escape is a draw. `reference_search` knows no draws: the comparison holds because no position
+  repeats within 3 plies and the perft positions start far from 100 half-moves, which the test
+  asserts. Every mate in `mate_positions.epd` was verified with
   Stockfish and by a full-width check that no other first move mates as fast: never edit a move
   or a mate distance to make the test pass. It also checks `think`:
   with only a depth limit it returns the score and move of `search`

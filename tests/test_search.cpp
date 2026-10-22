@@ -189,6 +189,10 @@ static void test_negamax_node_counts() {
 // and its own move ordering (reference_order). Neither changes the score of the root searched
 // with the full window, so it must equal the score of search. A move lost or duplicated by the
 // ordering code of search, or a wrong bound in its quiescence search, makes the two differ.
+// The reference knows no draws by repetition or the fifty-move rule, and needs none here: a
+// position repeats 4 plies later at the earliest, search() has no game history, and the perft
+// positions start with a half-move counter far below 100. test_against_reference checks the
+// last two, so a deeper comparison or another position fails loudly instead of silently.
 
 // Most valuable victim first, then least valuable attacker, quiet moves last in generator
 // order: std::stable_sort on a key, unlike the selection in search.cpp. Only for speed: the
@@ -278,6 +282,8 @@ static int reference_search(const Position &pos, int depth) {
 static void test_against_reference() {
     for (const Tree &t : TREES) {
         const Position pos = position_from(t.fen);
+        require(pos.half_move_counter + 3 < 100, "reference_search knows no fifty-move rule",
+                t.fen, SearchResult{});
         for (int depth = 1; depth <= 3; ++depth) {
             const int expected = reference_search(pos, depth);
             const SearchResult ab = search(pos, depth);
@@ -419,6 +425,113 @@ static void test_think_no_legal_moves() {
             "think: a checkmated root gives Move(), -MATE and one iteration", fen, r);
 }
 
+// A game played from `fen`: the position after `moves` (UCI names, all legal) and the hashes of
+// the positions before it, as uci.cpp passes them to think.
+struct Game {
+    Position pos;
+    std::vector<uint64_t> history;
+};
+
+static Game play(const std::string &fen, std::initializer_list<const char *> moves) {
+    Game game{position_from(fen), {}};
+    for (const char *uci : moves) {
+        const Move m = parse_uci_move(game.pos, uci);
+        Position next = game.pos;
+        if (m == Move() || !next.make_move(m)) {
+            std::cerr << fen << "\nillegal move in the test: " << uci << '\n';
+            std::abort();
+        }
+        game.history.push_back(game.pos.hash);
+        game.pos = next;
+    }
+    return game;
+}
+
+static SearchResult think_to_depth(const Game &game, int depth) {
+    std::atomic<bool> stop{false};
+    SearchLimits limits;
+    limits.depth = depth;
+    return think(game.pos, game.history, limits, stop, [](const FinishedIteration &) {});
+}
+
+// A position that repeats one on the current line or in the game scores 0, and so does one
+// reached after 100 plies without a capture or pawn move, unless it is a checkmate.
+static void test_draws() {
+    // Perpetual check: Black is a queen and two rooks behind, but Qf1+ Kh2 Qf2+ Kh1 is forced
+    // and repeats the start. The repetition is 4 plies deep, so depth 4 finds it; depth 3 still
+    // sees the material.
+    {
+        const std::string fen = "7k/8/RR6/Q7/8/7P/5q2/7K b - - 0 1";
+        const SearchResult shallow = search(position_from(fen), 3);
+        require(shallow.score < -500, "draws: depth 3 cannot see the perpetual yet", fen, shallow);
+        for (int depth = 4; depth <= 6; ++depth) {
+            const SearchResult r = search(position_from(fen), depth);
+            require(r.score == 0 && to_uci(r.best_move) == "f2f1",
+                    "draws: the losing side missed a perpetual check", fen, r);
+        }
+    }
+
+    // Repetitions of positions from the game, before the root. White is a queen up and the
+    // two sides have shuffled Qa1-a2 and Ke8-e7.
+    const std::string kqk = "4k3/8/8/8/8/8/8/Q3K3 w - - 0 1";
+    {
+        // Black to move can go back to e8 and repeat the start of the game: a draw it takes.
+        // Without the game's history the same position is lost.
+        const Game game = play(kqk, {"a1a2", "e8e7", "a2a1"});
+        const SearchResult r = think_to_depth(game, 4);
+        require(r.score == 0 && to_uci(r.best_move) == "e7e8",
+                "draws: the losing side missed a repetition of the game", kqk, r);
+        const SearchResult alone = think_to_depth(Game{game.pos, {}}, 4);
+        require(alone.score < -500, "draws: a repetition without history", kqk, alone);
+    }
+    {
+        // White to move: a2a1 would repeat the position after White's second move, so the
+        // winning side plays anything else and keeps its advantage.
+        const Game game = play(kqk, {"a1a2", "e8e7", "a2a1", "e7e8", "a1a2", "e8e7"});
+        for (int depth = 1; depth <= 4; ++depth) {
+            const SearchResult r = think_to_depth(game, depth);
+            require(r.score > 500 && to_uci(r.best_move) != "a2a1",
+                    "draws: the winning side repeated a position of the game", kqk, r);
+        }
+    }
+
+    // The fifty-move rule. With the counter at 99 every White move here is quiet and reaches 100:
+    // a draw at once. At 98 it takes a reply: depth 1 still sees the queen, depth 2 the draw.
+    {
+        const std::string at_99 = "4k3/8/8/8/8/8/8/Q3K3 w - - 99 80";
+        for (int depth = 1; depth <= 3; ++depth) {
+            const SearchResult r = search(position_from(at_99), depth);
+            require(r.score == 0, "draws: the 100th ply is not a draw", at_99, r);
+        }
+        const std::string at_98 = "4k3/8/8/8/8/8/8/Q3K3 w - - 98 80";
+        const SearchResult r1 = search(position_from(at_98), 1);
+        require(r1.score > 500, "draws: a draw one ply too early", at_98, r1);
+        const SearchResult r2 = search(position_from(at_98), 2);
+        require(r2.score == 0, "draws: the 100th ply after a reply is not a draw", at_98, r2);
+    }
+
+    // A capture resets the counter: at 99, taking the rook is the only way to keep the win.
+    {
+        const std::string fen = "4k3/8/8/8/8/8/r7/Q3K3 w - - 99 80";
+        const SearchResult r = search(position_from(fen), 2);
+        require(to_uci(r.best_move) == "a1a2" && r.score > 500,
+                "draws: a capture did not reset the fifty-move counter", fen, r);
+    }
+
+    // A checkmate on the 100th ply wins: Ra8 mates. With h7 empty the king escapes to h7, and
+    // the 100th ply is a draw.
+    {
+        const std::string mate = "6k1/5ppp/8/8/8/8/8/R5K1 w - - 99 80";
+        const SearchResult r = search(position_from(mate), 1);
+        require(r.score == MATE - 1 && to_uci(r.best_move) == "a1a8",
+                "draws: a mate on the 100th ply scored as a draw", mate, r);
+        const std::string escape = "6k1/5pp1/8/8/8/8/8/R5K1 w - - 99 80";
+        const SearchResult e = search(position_from(escape), 1);
+        require(e.score == 0, "draws: a check with an escape on the 100th ply is not a draw",
+                escape, e);
+    }
+}
+
 int main(int argc, char **argv) {
     if (argc != 2) {
         std::cerr << "usage: test_search <mate_positions.epd>\n";
@@ -436,6 +549,7 @@ int main(int argc, char **argv) {
     test_negamax_node_counts();
     test_against_reference();
     test_quiescence();
+    test_draws();
     test_think_depth_limit();
     test_think_stopped_at_once();
     test_think_time_limit();
