@@ -352,6 +352,7 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply, bool
     int best = -INF;
     Move best_move;
     MoveList list;
+    int legal_moves = 0;
 
     generate_moves(pos, list);
 
@@ -368,8 +369,21 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply, bool
             continue;
         }
 
-        // The child scores from the other side: the bounds change sign and swap places.
-        int score = -alphabeta(next, -beta, -alpha, depth - 1, ply + 1, true);
+        legal_moves++;
+        int score;
+
+        // The first move is probably the best, so it is searched with the full window.
+        if (legal_moves == 1) {
+            // The child scores from the other side: the bounds change sign and swap places.
+            score = -alphabeta(next, -beta, -alpha, depth - 1, ply + 1, true);
+        } else {
+            // The others are first only tested against alpha, and searched again with the full
+            // window when they beat it.
+            score = -alphabeta(next, -alpha - 1, -alpha, depth - 1, ply + 1, true);
+            if (score > alpha && score < beta) {
+                score = -alphabeta(next, -beta, -alpha, depth - 1, ply + 1, true);
+            }
+        }
 
         // An interrupted child returns a meaningless value: leave before it touches best or
         // alpha.
@@ -441,6 +455,7 @@ std::optional<SearchResult> search_root(const Position &pos, int depth) {
     int scores[256];
     int alpha = -INF;
     int beta = INF;
+    int legal_moves = 0;
 
     TTEntry entry;
     tt.probe(pos.hash, 0, entry);
@@ -458,7 +473,20 @@ std::optional<SearchResult> search_root(const Position &pos, int depth) {
             continue;
         }
 
-        int score = -alphabeta(next, -beta, -alpha, depth - 1, 1, true);
+        legal_moves++;
+        int score;
+
+        // The first move is probably the best, so it is searched with the full window.
+        if (legal_moves == 1) {
+            score = -alphabeta(next, -beta, -alpha, depth - 1, 1, true);
+        } else {
+            // The others are first only tested against alpha, and searched again with the full
+            // window when they beat it.
+            score = -alphabeta(next, -alpha - 1, -alpha, depth - 1, 1, true);
+            if (score > alpha) {
+                score = -alphabeta(next, -beta, -alpha, depth - 1, 1, true);
+            }
+        }
 
         // Checked before `score` is used: an interrupted child returns a meaningless value.
         if (*state.stop_flag) {
