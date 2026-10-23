@@ -1,0 +1,6 @@
+date,engine,commit,opponent,uci_elo,tc,book,concurrency,hash,games,wins,losses,draws,score,elo,elo_error,estimate,ptnml,failed_games,notes
+2026-10-23,v1.0,37e0c49,Stockfish 19,1600,8+0.08,UHO_Lichess_4852_v1.epd,7,16,50,48,2,0,96.00,552.08,nan,2152,0 0 2 0 23,0,
+2026-10-23,v1.0,37e0c49,Stockfish 19,2000,8+0.08,UHO_Lichess_4852_v1.epd,7,16,50,31,15,4,66.00,115.23,101.74,2115,2 2 9 2 10,0,
+2026-10-23,v1.0,37e0c49,Stockfish 19,2400,8+0.08,UHO_Lichess_4852_v1.epd,7,16,50,24,24,2,50.00,0.00,103.00,2400,7 0 10 2 6,0,
+2026-10-23,v1.0,37e0c49,Stockfish 19,2200,8+0.08,UHO_Lichess_4852_v1.epd,7,16,200,104,84,12,55.00,34.86,42.90,2235,15 2 53 8 22,1,
+2026-10-23,v1.0,37e0c49,Stockfish 19,2400,8+0.08,UHO_Lichess_4852_v1.epd,7,16,200,70,107,23,40.75,-65.02,46.17,2335,29 12 37 11 11,0,
