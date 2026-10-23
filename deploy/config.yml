@@ -83,6 +83,9 @@ matchmaking:                       # Outgoing challenges to other bots.
   challenge_increment:
     - 0
     - 2
-  opponent_rating_difference: 300
-  challenge_mode: "rated"          # Rated games give the bot a Lichess rating.
-  challenge_filter: coarse         # Do not challenge again a bot that declined.
+
+  opponent_min_rating: 1800
+  opponent_max_rating: 2100
+  rating_preference: "high"
+  challenge_mode: "rated"
+  challenge_filter: coarse
