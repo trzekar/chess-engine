@@ -330,6 +330,9 @@ static int reference_search(const Position &pos, int depth) {
 // search returns the score of reference_search, and its move is one that reaches that score:
 // its child, searched one ply shallower, scores the same from the other side. The move itself
 // may differ from the first best move in generator order, as move ordering breaks ties.
+// reference_search knows no null move pruning, and needs none up to depth 3: search passes only
+// with at least 3 plies left, and below the root of a search to depth 3 at most 2 are left. A
+// deeper comparison would fail on every cut a pass makes.
 static void test_against_reference() {
     // With the table, an entry searched deeper than needed can give a better score than the
     // fixed-depth tree: right for play, but no longer the reference's number.
@@ -567,7 +570,7 @@ static void test_draws() {
 // with the entries of the first, stored at the same depths, and so must still give the
 // reference's score. Within 3 plies no position comes back deeper than it was stored, so no
 // entry is better informed than the fixed-depth tree; a bound read the wrong way changes the
-// score.
+// score. Depth 3 also keeps null move pruning out, as in test_against_reference.
 static void test_table_bounds() {
     for (const Tree &t : TREES) {
         const Position pos = position_from(t.fen);

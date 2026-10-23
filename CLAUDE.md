@@ -289,7 +289,9 @@ and to checking that every number matches the recorded results.
   captures out of check, every move and mate detection in check) and its own move ordering, so a
   move lost by the ordering code or a wrong bound shows up as a different score. Every change to
   the rules of the search tree (null move, reductions, pruning in quiescence search) changes the
-  reference or limits the comparison in the same commit. Four positions at depth 1 check
+  reference or limits the comparison in the same commit. Null move pruning keeps the comparison
+  as it is: the search passes only with at least 3 plies left, which a search to depth 3 never
+  has below its root. Four positions at depth 1 check
   quiescence search directly: a queen does not take a defended pawn, a queen up scores neither as
   a draw nor as a mate (both colours, depths 1 to 3), a back-rank mate in 1 is found, and the same
   check with an escape square is not a mate. Draws are checked in seven positions: a forced

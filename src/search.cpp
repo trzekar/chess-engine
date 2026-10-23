@@ -34,6 +34,12 @@ constexpr int MAX_HISTORY_SCORE = 100'000;
 // root has no siblings to learn from.
 constexpr Move NO_KILLERS[2] = {};
 
+// Null move pruning: the side to move passes, and if the search after the pass, shallower by
+// this many plies on top of the usual one, still reaches beta, the node is cut. A larger value
+// prunes more but misses more of the opponent's tactics. 2 is the classic value; a match, not the
+// bench, decides whether 3 or a value growing with depth plays better.
+constexpr int NULL_MOVE_REDUCTION = 2;
+
 struct SearchState {
     uint64_t nodes = 0;
     std::atomic<bool> *stop_flag = nullptr;
@@ -240,11 +246,12 @@ int negamax(const Position &pos, int depth, int ply) {
     return max;
 }
 
-int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
+int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply, bool null_allowed) {
     const int current = state.root_index + ply;
     const int oldest = std::max(0, current - pos.half_move_counter);
     const int alpha_orig = alpha;
     stack_at(current) = pos.hash;
+    const Color us = pos.side_to_move;
 
     // A repetition of a position on this line or in the game is a draw: the side that could
     // have avoided it did not, and will not next time either. Only positions with the same
@@ -308,7 +315,37 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
         }
     }
 
-    const bool in_check = pos.in_check(pos.side_to_move);
+    const bool in_check = pos.in_check(us);
+    const bool has_material_other_than_pawns = pos.pieces[us][KNIGHT] | pos.pieces[us][BISHOP] |
+                                               pos.pieces[us][ROOK] | pos.pieces[us][QUEEN];
+
+    // Null move pruning: let the opponent move twice. If a reduced search with the null window
+    // around beta still reaches beta, a real move would almost surely reach it too, and the node
+    // is cut without generating moves. Never in check, where passing leaves the king to be taken;
+    // never with king and pawns only, where zugzwang is common and passing would be the best
+    // move; never twice in a row, which only searches the same position shallower; and only with
+    // at least 3 plies left to search: nearer the horizon a pass saves little, and every fixed
+    // search to depth 3, the ones the tests compare with reference_search, stays free of passes.
+    // A mate found after a pass proves nothing, as a game cannot pass, so beta is returned
+    // instead. Nothing is stored in the table: replacing the entry would lose its move.
+    if (null_allowed && !in_check && has_material_other_than_pawns && depth >= 3) {
+        Position next = pos;
+        next.make_null_move();
+
+        int score =
+            -alphabeta(next, -beta, -beta + 1, depth - 1 - NULL_MOVE_REDUCTION, ply + 1, false);
+
+        if (*state.stop_flag) {
+            return 0;
+        }
+
+        if (score >= beta) {
+            if (score >= MATE - MAX_PLY) {
+                return beta;
+            }
+            return score;
+        }
+    }
 
     // scores[i] belongs to list.moves[i]; pick_next swaps them together.
     int scores[256];
@@ -332,7 +369,7 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
         }
 
         // The child scores from the other side: the bounds change sign and swap places.
-        int score = -alphabeta(next, -beta, -alpha, depth - 1, ply + 1);
+        int score = -alphabeta(next, -beta, -alpha, depth - 1, ply + 1, true);
 
         // An interrupted child returns a meaningless value: leave before it touches best or
         // alpha.
@@ -359,11 +396,11 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
                     state.killers[ply][0] = m;
                 }
 
-                state.history[pos.side_to_move][m.from()][m.to()] += depth * depth;
-                if (state.history[pos.side_to_move][m.from()][m.to()] >= MAX_HISTORY_SCORE) {
+                state.history[us][m.from()][m.to()] += depth * depth;
+                if (state.history[us][m.from()][m.to()] >= MAX_HISTORY_SCORE) {
                     for (int from = 0; from < 64; from++) {
                         for (int to = 0; to < 64; to++) {
-                            state.history[pos.side_to_move][from][to] /= 2;
+                            state.history[us][from][to] /= 2;
                         }
                     }
                 }
@@ -421,7 +458,7 @@ std::optional<SearchResult> search_root(const Position &pos, int depth) {
             continue;
         }
 
-        int score = -alphabeta(next, -beta, -alpha, depth - 1, 1);
+        int score = -alphabeta(next, -beta, -alpha, depth - 1, 1, true);
 
         // Checked before `score` is used: an interrupted child returns a meaningless value.
         if (*state.stop_flag) {
