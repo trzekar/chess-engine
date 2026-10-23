@@ -20,6 +20,6 @@ constexpr milliseconds time_for_move(const milliseconds time_left, const millise
     return time;
 }
 
-// If n iterations used more than half of the time, the next iteration probably wouldn't finish before
-// time runs out.
+// If n iterations used more than half of the time, the next iteration probably wouldn't finish
+// before time runs out.
 constexpr milliseconds soft_limit(milliseconds budget) { return budget / 2; }
