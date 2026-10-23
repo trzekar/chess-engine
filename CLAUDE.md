@@ -133,6 +133,23 @@ cores minus one) and, on Windows with MinGW, the CMake generator. The format is 
 game ended by time forfeit, illegal move or crash (the row records how many), 2: the match
 could not be played or was interrupted, and no row was written.
 
+Estimate the engine's Elo on an outside scale with `gauntlet.py`. It builds one revision as
+`match.py` does and plays it against Stockfish with `UCI_LimitStrength` at every `UCI_Elo`
+level given (1320 to 3190), a fixed match of `--games` games per level (200 by default) at
+8+0.08 with the book, one thread and 16 MB of hash on both sides. Each level appends a row to
+`results/gauntlet.csv` with the Stockfish version, the score, the Elo difference and the
+estimate (level plus difference); at the end it prints the levels combined, weighted by
+1 / margin^2, from the levels scored between 25 % and 75 %. `UCI_Elo` is calibrated at 120+1
+(CCRL 40/4), so an estimate holds for its time control only. `match.local.json` needs a
+`"stockfish"` key with the path of the binary. Exit codes as for `match.py`, except that the
+rows of the levels finished before a failure stay written.
+
+```sh
+python3 scripts/gauntlet.py v1.0 --levels 1600 2000 2400 --games 50
+python3 scripts/gauntlet.py v1.0 --levels 2000 2200
+python3 scripts/gauntlet.py v1.0 --levels 2000 2200 --tc 120+1
+```
+
 - On Windows with MinGW, add `-G "MinGW Makefiles"` to the configure step.
 - Release (`-O3 -march=native`) is the only build used for perft speed, bench
   and matches. Never report timings from a debug build.
@@ -203,9 +220,10 @@ and to checking that every number matches the recorded results.
   through its callback. Every line the engine writes goes through `Output::send` in
   `src/uci.cpp`, which holds a mutex and flushes, so lines from the two threads never mix and
   a GUI never waits for a buffered `bestmove`.
-- `results/` holds the measurements: `nodes.csv`, `bench.csv` and `matches.csv`. Rows are only
-  ever appended, never edited, failed attempts included. `match.py` writes `matches.csv`; the
-  other two are filled by hand from Release runs.
+- `results/` holds the measurements: `nodes.csv`, `bench.csv`, `matches.csv` and `gauntlet.csv`.
+  Rows are only ever appended, never edited, failed attempts included. `match.py` writes
+  `matches.csv` and `gauntlet.py` writes `gauntlet.csv`; the other two are filled by hand from
+  Release runs.
 - The bench total is the search's fingerprint. A change meant to leave the search as it was (a
   refactor, a speed-up, comments) must leave the total unchanged and needs no match. A change
   that alters the total changes how the engine plays and needs a match. Changing
