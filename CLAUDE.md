@@ -257,8 +257,12 @@ and to checking that every number matches the recorded results.
   fixed seed, check after every legal move, over 100 000 of them, that `pos.hash` equals
   `compute_hash(pos)`; on a mismatch it prints the position and the move. Move orders that
   transpose give the same hash, a knight shuffle returns to the start hash, and positions that
-  differ only in castling rights or the en passant square do not. Never edit the pinned value
-  to make the test pass unless the generator, seed or key order was changed on purpose.
+  differ only in castling rights or the en passant square do not. It also checks
+  `make_null_move` in five positions against expected FENs (side to move, en passant square,
+  counters) and `compute_hash`: the hash changes by exactly the side key and the key of the en
+  passant file that went, and two null moves in a row give back the position without its en
+  passant square. Never edit the pinned value to make the test pass unless the generator,
+  seed or key order was changed on purpose.
 - `test_tt` checks the transposition table on its own: the number of entries for a size in MB
   (rounded down to a power of two, 0 for no table), `probe` giving back what `store` wrote for
   the same key only, a new entry replacing the old one at its index, the mate score correction

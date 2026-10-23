@@ -11,8 +11,8 @@
 #include <set>
 #include <string>
 
-// Checks the keys, compute_hash, and the incremental update of the hash in make_move against
-// compute_hash.
+// Checks the keys, compute_hash, and the incremental update of the hash in make_move and
+// make_null_move against compute_hash.
 
 static Position from_fen(const char *fen) {
     Position pos;
@@ -187,6 +187,63 @@ static void test_transpositions() {
     assert((direct.hash ^ stepwise.hash) == ZOBRIST.ep_file[file_of(E6)]);
 }
 
+// make_null_move passes the turn: the side to move changes, the en passant square goes, the
+// half-move counter restarts at 0 (so that the repetition scan stops at the null move), the move
+// number grows after Black passes, and pieces and castling rights stay. The hash changes by the
+// side key and the key of the en passant file that went, and equals compute_hash. Two passes in a
+// row give back the position without its en passant square. The search never passes in check,
+// so no position here is in check.
+static void test_null_move() {
+    struct Case {
+        const char *before;
+        const char *after;
+    };
+    static const Case CASES[] = {
+        // After 1. e4: Black passes, the en passant square goes and the move number grows.
+        {"rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
+         "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2"},
+        // White could take en passant on f6 and passes instead.
+        {"rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3",
+         "rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR b KQkq - 0 3"},
+        // Kiwipete: all four castling rights stay.
+        {"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+         "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R b KQkq - 0 1"},
+        // Fine #70 with a running half-move counter: White passes, the counter restarts.
+        {"8/k7/3p4/p2P1p2/P2P1P2/8/8/K7 w - - 7 30", "8/k7/3p4/p2P1p2/P2P1P2/8/8/K7 b - - 0 30"},
+        // Two of the four castling rights; Black passes with a running counter.
+        {"r3k2r/8/8/8/8/8/8/R3K2R b Kq - 12 40", "r3k2r/8/8/8/8/8/8/R3K2R w Kq - 0 41"},
+    };
+    for (const Case &c : CASES) {
+        const Position before = from_fen(c.before);
+        assert(!before.in_check(before.side_to_move));
+        const uint64_t ep_key =
+            before.ep_square == NO_SQUARE ? 0 : ZOBRIST.ep_file[file_of(before.ep_square)];
+
+        Position after = before;
+        after.make_null_move();
+        if (to_fen(after) != c.after || after.hash != compute_hash(after)) {
+            std::cerr << "make_null_move\nbefore:   " << c.before << "\nafter:    " << to_fen(after)
+                      << "\nexpected: " << c.after << '\n';
+            assert(false);
+        }
+        assert(after.hash == from_fen(c.after).hash);
+        assert((before.hash ^ after.hash) == (ZOBRIST.side ^ ep_key));
+
+        // A second pass in a row: the same pieces, rights and side to move as before, without
+        // the en passant square.
+        Position twice = after;
+        twice.make_null_move();
+        assert(twice.hash == compute_hash(twice));
+        assert(twice.hash == (before.hash ^ ep_key));
+        assert(twice.side_to_move == before.side_to_move);
+        assert(twice.castling_rights == before.castling_rights);
+        assert(twice.ep_square == NO_SQUARE);
+        for (Color col : {WHITE, BLACK})
+            for (int pt = PAWN; pt <= KING; pt++)
+                assert(twice.pieces[col][pt] == before.pieces[col][pt]);
+    }
+}
+
 int main() {
     init_attacks();
     test_keys();
@@ -195,6 +252,7 @@ int main() {
     test_features();
     test_random_walks();
     test_transpositions();
+    test_null_move();
     std::puts("test_zobrist: OK");
     return 0;
 }
