@@ -6,3 +6,4 @@ date,new,new_commit,old,old_commit,tc,book,concurrency,test,games,wins,losses,dr
 2026-10-23,ordering,85489af,v0.4-tt,da31c67,8+0.08,UHO_Lichess_4852_v1.epd,7,sprt 0 10,310,173,77,60,111.24,36.08,128.14,100.00,2.96,9 16 48 34 48,H1,1,killers and history vs v0.4-tt
 2026-10-23,nmp,2d0cced,v0.5-ordering,ebbd40b,8+0.08,UHO_Lichess_4852_v1.epd,7,sprt 0 10,264,157,57,50,138.50,40.70,159.27,100.00,2.97,5 12 44 20 51,H1,0,"null move pruning, R = 2 vs v0.5-ordering"
 2026-10-23,pvs,8e0a940,v0.6-nmp,32dd80f,8+0.08,UHO_Lichess_4852_v1.epd,7,sprt 0 10,914,384,308,222,28.96,17.60,37.26,99.94,2.99,32 81 189 89 66,H1,0,principal variation search vs v0.6-nmp
+2026-10-23,lmr,6e1c9f8,v0.7-pvs,045dd87,8+0.08,UHO_Lichess_4852_v1.epd,7,sprt 0 10,804,354,270,180,36.43,20.08,43.95,99.98,2.97,38 59 154 83 68,H1,0,"late move reductions, 1 ply vs v0.7-pvs"
