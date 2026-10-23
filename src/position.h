@@ -13,7 +13,7 @@ struct Position {
     Square ep_square = NO_SQUARE;
     uint8_t half_move_counter = 0;
     uint16_t move_number = 1;
-    // Zobrist hash (zobrist.h): set by parse_fen, kept up to date by make_move.
+    // Zobrist hash (zobrist.h): set by parse_fen, kept up to date by make_move and make_null_move.
     uint64_t hash = 0;
 
     Position() {
@@ -47,6 +47,8 @@ struct Position {
 
     // Plays `m` and returns false if it leaves the own king in check.
     bool make_move(Move m);
+    // Pseudo-move for null move pruning.
+    void make_null_move();
 };
 
 constexpr std::string_view START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";

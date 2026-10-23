@@ -326,3 +326,23 @@ bool Position::make_move(Move m) {
 
     return !is_attacked(lsb(pieces[us][KING]), them);
 }
+
+void Position::make_null_move() {
+    if (ep_square != NO_SQUARE) {
+        hash ^= ZOBRIST.ep_file[file_of(ep_square)];
+        ep_square = NO_SQUARE;
+    }
+
+    if (side_to_move == BLACK) {
+        move_number++;
+    }
+
+    hash ^= ZOBRIST.side;
+    side_to_move = ~side_to_move;
+
+    // Zeroing the counter stops the repetition scan of alphabeta at this null move: it looks back
+    // only half_move_counter plies, and a position "repeated" across a pass is no real repetition,
+    // as a game cannot pass. The cost: below the null move the fifty-move rule counts from zero,
+    // and a search almost never reaches 100 plies past it.
+    half_move_counter = 0;
+}
