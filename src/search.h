@@ -34,6 +34,9 @@ struct SearchLimits {
     int depth = MAX_PLY;
     // Empty means no time limit: the search stops only on `stop` or at `depth`.
     std::optional<std::chrono::milliseconds> time;
+    // When think exceeds this time limit, it won't start another iteration, because it probably
+    // wouldn't finish before the hard limit in `time`.
+    std::optional<std::chrono::milliseconds> soft_time_limit;
 };
 
 // What think reports after every completed depth; uci.cpp turns it into an `info` line.
@@ -56,15 +59,15 @@ SearchResult search(const Position &pos, int depth);
 // Called after every completed iteration, on the thread that runs think.
 using IterationCallback = std::function<void(const FinishedIteration &)>;
 
-// Iterative deepening: searches to depth 1, 2, 3, ... until it completes `limits.depth`, the
-// time in `limits.time` runs out or `stop_flag` is set. Returns the result of the last completed
-// iteration; an interrupted one is discarded. Depth 1 always completes, so the result holds a
-// move whenever the position has a legal one.
-// `history` holds the hashes of the positions of the game before `pos`, oldest first, without
-// `pos` itself: the positions a repetition can go back to. Positions before the last capture or
-// pawn move can never repeat, so passing the whole game costs nothing but a few bytes.
-// `stop_flag` may be set from another thread at any time. think also sets it itself when the
-// time runs out, so the caller clears it before each call.
+// Iterative deepening: searches to depth 1, 2, 3, ... until it completes `limits.depth`, exceeds
+// soft time limit, the time in `limits.time` runs out or `stop_flag` is set. Returns the
+// result of the last completed iteration; an interrupted one is discarded. Depth 1 always
+// completes, so the result holds a move whenever the position has a legal one. `history` holds the
+// hashes of the positions of the game before `pos`, oldest first, without `pos` itself: the
+// positions a repetition can go back to. Positions before the last capture or pawn move can never
+// repeat, so passing the whole game costs nothing but a few bytes. `stop_flag` may be set from
+// another thread at any time. think also sets it itself when the time runs out, so the caller
+// clears it before each call.
 SearchResult think(const Position &pos, const std::vector<uint64_t> &history,
                    const SearchLimits &limits, std::atomic<bool> &stop_flag,
                    const IterationCallback &on_iteration);

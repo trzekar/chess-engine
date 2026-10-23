@@ -240,8 +240,11 @@ private:
         if (movetime) {
             limits.time = milliseconds(*movetime);
         } else if (time[us] && !infinite) {
-            limits.time =
+            const milliseconds budget =
                 time_for_move(milliseconds(*time[us]), milliseconds(increment[us].value_or(0)));
+            limits.time = budget;
+            // Only on the clock: `movetime` asks the engine to think for exactly that long.
+            limits.soft_time_limit = soft_limit(budget);
         }
 
         // think may have set the flag at the end of the previous search; it must start clear.

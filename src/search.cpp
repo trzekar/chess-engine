@@ -613,6 +613,11 @@ SearchResult think(const Position &pos, const std::vector<uint64_t> &history,
             }
         }
 
+        if (limits.soft_time_limit && depth >= 2 &&
+            std::chrono::steady_clock::now() >= start + *limits.soft_time_limit) {
+            break;
+        }
+
         std::optional<SearchResult> iteration = search_root(pos, depth);
         // An interrupted iteration is discarded: the last completed one stays the answer.
         if (!iteration) {

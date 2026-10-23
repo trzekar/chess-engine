@@ -479,6 +479,33 @@ static void test_think_time_limit() {
     }
 }
 
+// The soft limit only keeps think from starting another iteration: with 0 ms it returns after
+// depth 1, with 50 ms long before a hard limit of 10 s, and neither sets the flag, which only the
+// hard limit does. In the start position no search this short reaches MAX_PLY.
+static void test_think_soft_limit() {
+    const std::string fen(START_FEN);
+    const Position pos = position_from(fen);
+    for (const int soft : {0, 50}) {
+        std::atomic<bool> stop{false};
+        SearchLimits limits;
+        limits.time = std::chrono::milliseconds(10'000);
+        limits.soft_time_limit = std::chrono::milliseconds(soft);
+        int last_depth = 0;
+        const auto start = std::chrono::steady_clock::now();
+        const SearchResult r = think(pos, {}, limits, stop,
+                                     [&](const FinishedIteration &it) { last_depth = it.depth; });
+        const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(
+                              std::chrono::steady_clock::now() - start)
+                              .count();
+        const std::string context = fen + "\nsoft limit " + std::to_string(soft) + " ms";
+        require(took < 5'000, "think: the soft limit did not end the search early", context, r);
+        require(!stop, "think: the soft limit set the flag", context, r);
+        require(r.best_move != Move(), "think: no move after a soft limit", context, r);
+        require(soft > 0 || last_depth == 1, "think: a soft limit of 0 ms went past depth 1",
+                context, r);
+    }
+}
+
 // Without a legal move think returns at once, even without limits: one iteration, no move.
 static void test_think_no_legal_moves() {
     const std::string fen = "rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3";
@@ -625,6 +652,7 @@ int main(int argc, char **argv) {
     test_think_depth_limit();
     test_think_stopped_at_once();
     test_think_time_limit();
+    test_think_soft_limit();
     test_think_no_legal_moves();
     std::cout << "test_search: OK\n";
     return 0;

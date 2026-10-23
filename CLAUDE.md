@@ -316,11 +316,13 @@ and to checking that every number matches the recorded results.
   reaches it (killers and history live across its iterations, so its move order, node counts
   and choice between equal moves may differ from a fresh `search`), its node count only grows
   from one iteration to the next, and the callback sees every depth once in order; a stop flag set before the call still gives the depth-1 move; time
-  budgets of 0, 50 and 200 ms are kept and end with the flag set; a checkmated root gives
-  `Move()` after one iteration.
+  budgets of 0, 50 and 200 ms are kept and end with the flag set; a soft limit of 0 ms ends
+  after depth 1 and one of 50 ms long before a 10 s hard limit, neither setting the flag; a
+  checkmated root gives `Move()` after one iteration.
 - `test_uci` drives `uci_loop` as a GUI does, with commands sent while the engine thinks and
   every output line timestamped: the `uci` handshake, `info` lines for every depth, `go
-  movetime` and `go wtime` kept within their budget, `isready` answered and `bestmove`
+  movetime` and `go wtime` kept within their budget (the soft limit, half the budget, applies
+  to the clock only, so `movetime` still takes its time), `isready` answered and `bestmove`
   withheld during `go infinite` until `stop`, `quit` during a search, `score mate 2`,
   `mate 1` and `mate -1`, a bad FEN or an illegal move leaving the position as it was, and
   the Hash option: announced before `uciok`, `setoption name Hash` resizing the table within 1

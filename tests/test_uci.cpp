@@ -16,6 +16,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <utility>
 #include <vector>
 
 // Drives uci_loop as a GUI does: the engine runs on its own thread, commands arrive one at a
@@ -187,7 +188,8 @@ static long long ms_between(Clock::time_point a, Clock::time_point b) {
 }
 
 // time_for_move: clock / 20 + increment / 2, never closer than 50 ms to the end of the clock
-// and never under 1 ms. The expected budgets are worked out by hand from that rule.
+// and never under 1 ms. The expected budgets are worked out by hand from that rule. soft_limit
+// is half the budget, rounded down.
 static void test_time_budget() {
     const auto require = [](int clock, int increment, long long expected) {
         const long long got = time_for_move(milliseconds(clock), milliseconds(increment)).count();
@@ -202,6 +204,15 @@ static void test_time_budget() {
     require(60, 80, 10);    // 3 + 40 = 43, capped at 60 - 50
     require(30, 80, 1);     // the cap 30 - 50 is negative: the floor of 1 ms wins
     require(0, 0, 1);
+
+    for (const auto &[budget, expected] : {std::pair{440, 220}, std::pair{1, 0}}) {
+        const long long got = soft_limit(milliseconds(budget)).count();
+        if (got != expected) {
+            std::cerr << "soft_limit(" << budget << " ms) = " << got << " ms, expected "
+                      << expected << " ms\n";
+            std::abort();
+        }
+    }
 }
 
 static void test_handshake() {
