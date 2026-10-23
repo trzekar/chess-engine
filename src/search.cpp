@@ -308,6 +308,8 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
         }
     }
 
+    const bool in_check = pos.in_check(pos.side_to_move);
+
     // scores[i] belongs to list.moves[i]; pick_next swaps them together.
     int scores[256];
     int best = -INF;
@@ -372,7 +374,7 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply) {
     }
 
     if (best == -INF) {
-        if (pos.in_check(pos.side_to_move)) {
+        if (in_check) {
             return -MATE + ply;
         } else {
             return 0;
