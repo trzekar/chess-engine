@@ -40,6 +40,17 @@ constexpr Move NO_KILLERS[2] = {};
 // bench, decides whether 3 or a value growing with depth plays better.
 constexpr int NULL_MOVE_REDUCTION = 2;
 
+// Late move reductions: a quiet move late in the list is first searched this many plies
+// shallower, and again at full depth only if it beats alpha.
+constexpr int LATE_MOVE_REDUCTION = 1;
+
+// The first legal move that may be reduced, counted from 1.
+constexpr int FIRST_REDUCED_MOVE = 4;
+
+// No move is reduced with fewer plies left, so searches to depth 3, which the tests compare
+// with reference_search, are never reduced.
+constexpr int MIN_REDUCTION_DEPTH = 3;
+
 struct SearchState {
     uint64_t nodes = 0;
     std::atomic<bool> *stop_flag = nullptr;
@@ -377,11 +388,22 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply, bool
             // The child scores from the other side: the bounds change sign and swap places.
             score = -alphabeta(next, -beta, -alpha, depth - 1, ply + 1, true);
         } else {
-            // The others are first only tested against alpha, and searched again with the full
-            // window when they beat it.
-            score = -alphabeta(next, -alpha - 1, -alpha, depth - 1, ply + 1, true);
-            if (score > alpha && score < beta) {
-                score = -alphabeta(next, -beta, -alpha, depth - 1, ply + 1, true);
+            // The others are only tested against alpha with the null window, late quiet moves at
+            // reduced depth first; whatever beats alpha is searched again deeper, then wider.
+            const bool can_be_reduced = depth >= MIN_REDUCTION_DEPTH &&
+                                        legal_moves >= FIRST_REDUCED_MOVE && !m.is_capture() &&
+                                        !m.is_promotion() && !in_check &&
+                                        !next.in_check(next.side_to_move);
+
+            if (can_be_reduced) {
+                score = -alphabeta(next, -alpha - 1, -alpha, depth - 1 - LATE_MOVE_REDUCTION,
+                                   ply + 1, true);
+            }
+            if (!can_be_reduced || score > alpha) {
+                score = -alphabeta(next, -alpha - 1, -alpha, depth - 1, ply + 1, true);
+                if (score > alpha && score < beta) {
+                    score = -alphabeta(next, -beta, -alpha, depth - 1, ply + 1, true);
+                }
             }
         }
 

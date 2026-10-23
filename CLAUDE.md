@@ -279,9 +279,10 @@ and to checking that every number matches the recorded results.
   copy them from the engine's output.
 - `test_search` checks `search` and `negamax_root` in five ways. The ten positions of
   `tests/mate_positions.epd` (five mates in 2, five in 3, four with Black to move) are solved
-  by `search` at depths 2N - 1 and 2N with score `MATE - (2N - 1)` and the only winning first
-  move: at 2N - 1 quiescence search sees the last ply, as a side in check without a legal move is
-  mated. The mates in 2 are also solved by `negamax_root` at depth 2N. A checkmated root scores
+  by `search` at depths 2N to 2N + 2 with score `MATE - (2N - 1)` and the only winning first
+  move. A full-width search finds them at 2N - 1, where quiescence search sees the last ply, but
+  late move reductions may miss a mate there (the mate in 3 with 1. Qb2 is found from depth 6
+  on). The mates in 2 are also solved by `negamax_root` at depth 2N. A checkmated root scores
   `-MATE` and a stalemated one 0, both with `Move()` and one node. `negamax_root` visits exactly
   the sum of perft(0..3) in the perft positions. There `search` returns the score of
   `reference_search` at depths 1 to 3, and its move reaches that score. `reference_search` is an
@@ -289,9 +290,9 @@ and to checking that every number matches the recorded results.
   captures out of check, every move and mate detection in check) and its own move ordering, so a
   move lost by the ordering code or a wrong bound shows up as a different score. Every change to
   the rules of the search tree (null move, reductions, pruning in quiescence search) changes the
-  reference or limits the comparison in the same commit. Null move pruning keeps the comparison
-  as it is: the search passes only with at least 3 plies left, which a search to depth 3 never
-  has below its root. Four positions at depth 1 check
+  reference or limits the comparison in the same commit. Null move pruning and late move
+  reductions keep the comparison as it is: the search passes and reduces only with at least 3
+  plies left, which a search to depth 3 never has below its root. Four positions at depth 1 check
   quiescence search directly: a queen does not take a defended pawn, a queen up scores neither as
   a draw nor as a mate (both colours, depths 1 to 3), a back-rank mate in 1 is found, and the same
   check with an escape square is not a mate. Draws are checked in seven positions: a forced
