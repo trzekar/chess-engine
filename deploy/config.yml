@@ -84,8 +84,8 @@ matchmaking:                       # Outgoing challenges to other bots.
     - 0
     - 2
 
-  opponent_min_rating: 1800
-  opponent_max_rating: 2100
+  opponent_min_rating: 2000
+  opponent_max_rating: 2400
   rating_preference: "high"
   challenge_mode: "rated"
   challenge_filter: coarse
