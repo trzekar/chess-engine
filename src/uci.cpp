@@ -21,7 +21,7 @@
 
 namespace {
 
-constexpr std::string_view ENGINE_NAME = "chess-engine";
+constexpr std::string_view ENGINE_NAME = "trzekar-engine";
 constexpr std::string_view ENGINE_AUTHOR = "Karol";
 
 // Every line the engine writes, from either thread, goes through send: the mutex keeps two lines
