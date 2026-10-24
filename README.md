@@ -4,7 +4,7 @@
 
 A UCI chess engine written from scratch in C++20, with every search feature measured by SPRT self-play.
 
-- **~2277 ± 29 Elo** vs. Stockfish 19 limited with `UCI_Elo`, at 8+0.08: 450 games against levels 2000–2400 ([`results/gauntlet.csv`](results/gauntlet.csv))
+- **~2277 ± 29 Elo** vs. Stockfish 19 limited with `UCI_Elo`, at 8+0.08: 500 games against levels 2000–2400 ([`results/gauntlet.csv`](results/gauntlet.csv))
 - **37.6 M nodes/s** in perft(6) from the start position ([`results/perft.csv`](results/perft.csv))
 - **2.8 M nodes/s** in search, `engine bench` at depth 5 ([`results/bench.csv`](results/bench.csv))
 
@@ -17,8 +17,8 @@ Measured on one thread of an AMD Ryzen 7 4700U, built with `-O3 -march=native`.
   <img alt="Cumulative self-play Elo gain per version" src="docs/img/elo_progress.png">
 </picture>
 
-Every feature went in as its own tagged version and had to beat the previous one in a match
-before I merged it.
+Every feature went in as its own tagged version and had to pass a match against the previous
+one before I merged it.
 
 | Version | Technique | Elo vs. previous | Games | Test | Cumulative |
 |---|---|---:|---:|---|---:|
@@ -34,7 +34,7 @@ before I merged it.
 Matches run in [fastchess](https://github.com/Disservin/fastchess) at 8+0.08, with
 [UHO openings](https://github.com/official-stockfish/books) played from both sides. Each one is
 an SPRT with elo0 = 0, elo1 = 10 and α = β = 0.05, so it stops as soon as there is enough
-evidence either way. Big gains were settled in about 200 games; PVS needed 914. Errors are 95 %
+evidence either way. Big gains were settled in about 200 games; PVS needed 914. Errors are 95%
 intervals. Before trusting any of it, I played `v0.1` against itself: −8.7 ± 23.3 Elo in 200
 games, so the setup reads noise as noise.
 
@@ -78,7 +78,7 @@ go movetime 1000
 
 ## Reproducing the measurements
 
-Every number in this README comes from a command below and is recorded in `results/`.
+Every measurement in this README comes from a command below and is recorded in `results/`.
 
 ```sh
 ctest --test-dir build/release --output-on-failure            # unit tests, fast perft suite
@@ -149,12 +149,12 @@ queen attacks walk each ray up to the first blocker, which is easy to check agai
 8×8 reference, as `test_attacks` does. The price is a loop for every sliding piece; perft
 still runs at 37.6 M nodes/s.
 
-**Copy-make instead of unmake.** `make_move` copies the 200-byte position and changes the
-copy; going back means dropping it. With no unmake there is no way to restore castling rights,
-the en passant square or the hash incorrectly, a class of bugs that perft would otherwise have
-to catch. The cost is a 200-byte copy at every node. Moves are generated pseudo-legal, and
-`make_move` returns false when a move leaves the king in check, so each illegal move also costs
-a copy.
+**Copy-make instead of unmake.** Before each move the search copies the 200-byte position and
+plays the move on the copy; going back means dropping the copy. With no unmake there is no way
+to restore castling rights, the en passant square or the hash incorrectly, a class of bugs that
+perft would otherwise have to catch. The cost is a 200-byte copy at every node. Moves are
+generated pseudo-legal, and `make_move` returns false when a move leaves the king in check, so
+each illegal move also costs a copy.
 
 **An always-replace transposition table.** Entries are 16 bytes (the full key, move, score,
 depth and bound), so the default 16 MB holds about a million of them, indexed by the low bits
