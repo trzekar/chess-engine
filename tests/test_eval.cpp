@@ -152,7 +152,7 @@ static void test_symmetry() {
         assert(parse_fen(fen, pos));
         positions += check_tree(pos, 2);
     }
-    // Step 2.1 asks for at least 100 positions; two plies give several thousand.
+    // Two plies give several thousand positions; 100 only guards against a walk cut short.
     assert(positions >= 100);
 }
 

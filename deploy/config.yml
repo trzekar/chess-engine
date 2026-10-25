@@ -45,7 +45,7 @@ engine:
     resign_enabled: false
     offer_draw_enabled: false
 
-  # The engine has no UCI options; it ignores `setoption`.
+  # No options are sent: Hash stays at the engine's default of 16 MB.
   uci_options: {}
 
 abort_time: 30                     # Abort a game after 30 s without activity.

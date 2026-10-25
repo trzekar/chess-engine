@@ -10,8 +10,8 @@
 #include <utility>
 
 namespace {
-// Reading the clock costs tens of nanoseconds, a node about 140, so the clock is read only
-// once every 2048 nodes: about 0.3 ms between checks at 7 million nodes per second.
+// The clock is read every 2048 nodes only: a fraction of a millisecond between checks in
+// Release, far below the 50 ms margin of timeman.h.
 constexpr uint64_t CHECK_TIME_INTERVAL = 2048;
 
 // Move ordering bands, highest first, wide apart so that no band can reach into the next:
@@ -30,15 +30,16 @@ constexpr int KILLER_2_SCORE = 800'000;
 // values stay far below the killers.
 constexpr int MAX_HISTORY_SCORE = 100'000;
 
-// For score_moves where killers do not apply: quiescence search plays captures only, and the
-// root has no siblings to learn from.
+// Passed where killers do not apply: at the root, which has no siblings, and in quiescence.
 constexpr Move NO_KILLERS[2] = {};
 
-// Null move pruning: the side to move passes, and if the search after the pass, shallower by
-// this many plies on top of the usual one, still reaches beta, the node is cut. A larger value
-// prunes more but misses more of the opponent's tactics. 2 is the classic value; a match, not the
-// bench, decides whether 3 or a value growing with depth plays better.
+// Extra reduction of the null move search, on top of the usual ply. 2 is the classic value;
+// R = 3 or a depth-dependent R has not been tested yet.
 constexpr int NULL_MOVE_REDUCTION = 2;
+
+// With fewer plies left a pass saves little. Also keeps the depth-3 searches the tests
+// compare with reference_search free of passes.
+constexpr int MIN_NULL_MOVE_DEPTH = 3;
 
 // Late move reductions: a quiet move late in the list is first searched this many plies
 // shallower, and again at full depth only if it beats alpha.
@@ -62,6 +63,7 @@ struct SearchState {
     std::vector<uint64_t> hash_stack = {};
     int root_index = 0;
     // Two quiet moves per ply that caused a cutoff, the newer first.
+    // MAX_PLY + 1 rows are enough: nothing extends the search, so ply stays below the depth.
     Move killers[MAX_PLY + 1][2] = {};
     // Every quiet cutoff also counts in the history of its side, weighted by the
     // depth left: a cutoff high in the tree saves far more than one near the leaves.
@@ -70,8 +72,7 @@ struct SearchState {
 
 SearchState state;
 
-// The stack is indexed with int: the scan for repetitions walks down from current - 4, which as
-// an unsigned type would wrap around instead of going below zero. Every index used is at least 0.
+// int, not size_t: the repetition scan counts down and steps below 0 before it stops.
 uint64_t &stack_at(int i) {
     assert(i >= 0);
     return state.hash_stack[static_cast<size_t>(i)];
@@ -80,11 +81,8 @@ uint64_t &stack_at(int i) {
 // The stop flag of a search without limits: nobody ever sets it.
 std::atomic<bool> never_stop{false};
 
-// Move ordering score, higher is searched first. The move from the transposition table comes
-// first. Captures follow MVV-LVA: the most valuable victim first, and for the same victim the
-// least valuable attacker. The en passant victim is a pawn, though the target square is empty. A
-// quiet queen promotion scores like a pawn taking a queen. A killer of this ply comes next, the
-// newer first, then every other quiet move by its history.
+// Bands as above. The en passant victim is a pawn although `to` is empty, and a quiet queen
+// promotion is ordered like a pawn taking a queen.
 int score_move(const Position &pos, Move m, Move tt_move, const Move killers[2]) {
     if (m == tt_move) {
         return TT_MOVE_SCORE;
@@ -109,8 +107,7 @@ int score_move(const Position &pos, Move m, Move tt_move, const Move killers[2])
     return state.history[pos.side_to_move][m.from()][m.to()];
 }
 
-// Scores every move of `list` into `scores`: scores[i] belongs to list.moves[i], and pick_next
-// keeps them together. `tt_move` is Move() where there is none, as in quiescence search.
+// `tt_move` is Move() when there is none.
 void score_moves(const Position &pos, const MoveList &list, Move tt_move, int scores[],
                  const Move killers[2]) {
     for (int i = 0; i < list.size; i++) {
@@ -118,9 +115,8 @@ void score_moves(const Position &pos, const MoveList &list, Move tt_move, int sc
     }
 }
 
-// Selection sort, one step at a time: moves the highest-scoring move among i..size-1 to
-// index i, keeping each score next to its move. After a cutoff the rest of the list is
-// never sorted, which is cheaper than sorting it all up front.
+// One step of selection sort: the best remaining move goes to index i, its score with it.
+// After a cutoff the rest is never sorted, which beats sorting the whole list up front.
 void pick_next(MoveList &list, int scores[], int i) {
     int max = scores[i];
     int best_ind = i;
@@ -136,12 +132,9 @@ void pick_next(MoveList &list, int scores[], int i) {
     std::swap(list.moves[i], list.moves[best_ind]);
 }
 
-// Quiescence search: past the depth limit, plays only captures and queen promotions until the
-// position is quiet, so eval never scores a position in the middle of an exchange (the horizon
-// effect). It needs no depth: every capture removes a piece, so the chains end on their own.
-// In check there is no stand pat, as no quiet move may hold the static score: every move is
-// searched, and with none legal the side is mated. Out of check only captures are searched,
-// so a stalemate cannot be told apart from a quiet position and is never scored here.
+// Quiescence search: past the horizon, plays captures and queen promotions until the position
+// is quiet, so eval never scores the middle of an exchange. In check there is no stand pat and
+// every evasion is searched; out of check a stalemate goes unnoticed.
 int quiescence(const Position &pos, int alpha, int beta, int ply) {
     state.nodes++;
     if (state.nodes % CHECK_TIME_INTERVAL == 0 && state.is_time_limited) {
@@ -150,13 +143,13 @@ int quiescence(const Position &pos, int alpha, int beta, int ply) {
         }
     }
 
-    // As in alphabeta: an interrupted child's value is meaningless.
+    // Stopped: the caller ignores this value.
     if (*state.stop_flag) {
         return 0;
     }
 
-    // Only a guard: capture chains end long before MAX_PLY, but chains of checks could run on,
-    // and tables indexed by ply must not overflow.
+    // Captures run out on their own, check-evasion chains need not. Also keeps -MATE + ply
+    // inside the range the TT treats as a mate.
     if (ply >= MAX_PLY) {
         return eval(pos);
     }
@@ -212,6 +205,7 @@ int quiescence(const Position &pos, int alpha, int beta, int ply) {
         }
     }
 
+    // In check every move was tried and none was legal.
     if (best == -INF && in_check) {
         return -MATE + ply;
     }
@@ -243,9 +237,7 @@ int negamax(const Position &pos, int depth, int ply) {
         }
     }
 
-    // Every real score is above -INF, so -INF here means no legal move. With pseudo-legal
-    // moves that is known only after trying them all. Adding `ply` makes a nearer mate
-    // score higher, so the engine prefers the shortest one.
+    // No legal move. `+ ply` scores a nearer mate higher, so the shortest one is preferred.
     if (max == -INF) {
         if (pos.in_check(pos.side_to_move)) {
             return -MATE + ply;
@@ -257,6 +249,8 @@ int negamax(const Position &pos, int depth, int ply) {
     return max;
 }
 
+// Fail-soft alpha-beta. `depth` is the number of plies left, `ply` the distance from the root
+// (mate scores, killers, hash stack). `null_allowed` is false right after a null move.
 int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply, bool null_allowed) {
     const int current = state.root_index + ply;
     const int oldest = std::max(0, current - pos.half_move_counter);
@@ -264,10 +258,9 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply, bool
     stack_at(current) = pos.hash;
     const Color us = pos.side_to_move;
 
-    // A repetition of a position on this line or in the game is a draw: the side that could
-    // have avoided it did not, and will not next time either. Only positions with the same
-    // side to move can match, so every second ply; none can repeat within 2 plies, and none
-    // before the last capture or pawn move, which half_move_counter counts back to.
+    // One repetition, on this line or in the game, already scores as a draw: if repeating was
+    // good once, it is good again. Only every second ply can match, at the earliest 4 plies
+    // back, and nothing before the last capture or pawn move.
     if (ply > 0) {
         for (int i = current - 4; i >= oldest; i -= 2) {
             if (pos.hash == stack_at(i)) {
@@ -312,6 +305,8 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply, bool
         return 0;
     }
 
+    // Cut only with an entry searched at least this deep, and with a bound only on its side of
+    // the window. A shallower entry still puts its move first in the ordering below.
     TTEntry entry;
 
     if (tt.probe(pos.hash, ply, entry) && entry.depth >= depth) {
@@ -330,16 +325,12 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply, bool
     const bool has_material_other_than_pawns = pos.pieces[us][KNIGHT] | pos.pieces[us][BISHOP] |
                                                pos.pieces[us][ROOK] | pos.pieces[us][QUEEN];
 
-    // Null move pruning: let the opponent move twice. If a reduced search with the null window
-    // around beta still reaches beta, a real move would almost surely reach it too, and the node
-    // is cut without generating moves. Never in check, where passing leaves the king to be taken;
-    // never with king and pawns only, where zugzwang is common and passing would be the best
-    // move; never twice in a row, which only searches the same position shallower; and only with
-    // at least 3 plies left to search: nearer the horizon a pass saves little, and every fixed
-    // search to depth 3, the ones the tests compare with reference_search, stays free of passes.
-    // A mate found after a pass proves nothing, as a game cannot pass, so beta is returned
-    // instead. Nothing is stored in the table: replacing the entry would lose its move.
-    if (null_allowed && !in_check && has_material_other_than_pawns && depth >= 3) {
+    // Null move pruning: give the opponent a free move. If a reduced null-window search still
+    // fails high, a real move would too. Not in check, not with king and pawns only (zugzwang)
+    // and not twice in a row. A mate after a pass proves nothing, so it is clamped to beta.
+    // No TT store: the entry would carry no move.
+    if (null_allowed && !in_check && has_material_other_than_pawns &&
+        depth >= MIN_NULL_MOVE_DEPTH) {
         Position next = pos;
         next.make_null_move();
 
@@ -358,7 +349,6 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply, bool
         }
     }
 
-    // scores[i] belongs to list.moves[i]; pick_next swaps them together.
     int scores[256];
     int best = -INF;
     Move best_move;
@@ -366,9 +356,6 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply, bool
     int legal_moves = 0;
 
     generate_moves(pos, list);
-
-    // Best moves first: the earlier alpha-beta meets the move that refutes this position,
-    // the more of the list it skips.
     score_moves(pos, list, entry.move, scores, state.killers[ply]);
 
     for (int i = 0; i < list.size; i++) {
@@ -383,13 +370,12 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply, bool
         legal_moves++;
         int score;
 
-        // The first move is probably the best, so it is searched with the full window.
+        // PVS: the first move is likely the best and gets the full window.
         if (legal_moves == 1) {
-            // The child scores from the other side: the bounds change sign and swap places.
             score = -alphabeta(next, -beta, -alpha, depth - 1, ply + 1, true);
         } else {
-            // The others are only tested against alpha with the null window, late quiet moves at
-            // reduced depth first; whatever beats alpha is searched again deeper, then wider.
+            // The rest get a null-window test against alpha, late quiet moves reduced first
+            // (LMR). A move that beats alpha is searched again at full depth, then full width.
             const bool can_be_reduced = depth >= MIN_REDUCTION_DEPTH &&
                                         legal_moves >= FIRST_REDUCED_MOVE && !m.is_capture() &&
                                         !m.is_promotion() && !in_check &&
@@ -407,8 +393,7 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply, bool
             }
         }
 
-        // An interrupted child returns a meaningless value: leave before it touches best or
-        // alpha.
+        // Stopped: the child's score is meaningless.
         if (*state.stop_flag) {
             return 0;
         }
@@ -421,8 +406,7 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply, bool
             }
         }
 
-        // The opponent already has a better choice higher in the tree and will avoid this
-        // position, so one refutation is enough.
+        // Fail high: the opponent will avoid this position, one refutation is enough.
         if (score >= beta) {
             // A quiet move that refutes this position will likely refute its siblings too: it
             // becomes the newer killer of this ply, and the newer one before it the older.
@@ -462,9 +446,8 @@ int alphabeta(const Position &pos, int alpha, int beta, int depth, int ply, bool
     return best;
 }
 
-// One iteration: every root move searched to `depth`, the best one kept. Returns nothing when the
-// stop flag cut the iteration short: some moves are then unsearched or searched only in part, so
-// neither the move nor the score may be used.
+// One iteration at the root. Returns nullopt when stopped midway; think then keeps the result
+// of the previous depth.
 std::optional<SearchResult> search_root(const Position &pos, int depth) {
     stack_at(state.root_index) = pos.hash;
     state.nodes++;
@@ -473,17 +456,15 @@ std::optional<SearchResult> search_root(const Position &pos, int depth) {
     MoveList list;
     generate_moves(pos, list);
 
-    // scores[i] belongs to list.moves[i]; pick_next swaps them together.
     int scores[256];
     int alpha = -INF;
     int beta = INF;
     int legal_moves = 0;
 
     TTEntry entry;
+    // Only for the move: the root is always searched.
     tt.probe(pos.hash, 0, entry);
 
-    // Best moves first: the earlier alpha-beta meets the move that refutes this position,
-    // the more of the list it skips.
     score_moves(pos, list, entry.move, scores, NO_KILLERS);
 
     for (int i = 0; i < list.size; i++) {
@@ -498,19 +479,18 @@ std::optional<SearchResult> search_root(const Position &pos, int depth) {
         legal_moves++;
         int score;
 
-        // The first move is probably the best, so it is searched with the full window.
+        // PVS, as in alphabeta.
         if (legal_moves == 1) {
             score = -alphabeta(next, -beta, -alpha, depth - 1, 1, true);
         } else {
-            // The others are first only tested against alpha, and searched again with the full
-            // window when they beat it.
+            // Null-window test, full window again if it beats alpha. No reductions at the root.
             score = -alphabeta(next, -alpha - 1, -alpha, depth - 1, 1, true);
             if (score > alpha) {
                 score = -alphabeta(next, -beta, -alpha, depth - 1, 1, true);
             }
         }
 
-        // Checked before `score` is used: an interrupted child returns a meaningless value.
+        // Stopped: the child's score is meaningless.
         if (*state.stop_flag) {
             return std::nullopt;
         }
@@ -576,13 +556,12 @@ SearchResult negamax_root(const Position &pos, int depth) {
 
 SearchResult search(const Position &pos, int depth) {
     assert(depth >= 1);
-    // A fixed-depth search: no time limit and a flag nobody sets, so the iteration always
-    // completes and the optional always holds a result.
     state = SearchState{};
+    // never_stop: the iteration always completes, so the optional is never empty.
     state.stop_flag = &never_stop;
     state.hash_stack.resize(MAX_PLY + 1);
-    // An empty table makes the result depend on `pos` and `depth` alone, as tests and the bench
-    // need. think keeps the table: between the moves of a game its entries are worth keeping.
+    // A fresh table makes the result depend on `pos` and `depth` alone (tests, bench);
+    // think keeps it between the moves of a game.
     tt.clear();
     return *search_root(pos, depth);
 }
@@ -614,12 +593,10 @@ SearchResult think(const Position &pos, const std::vector<uint64_t> &history,
         }
 
         std::optional<SearchResult> iteration = search_root(pos, depth);
-        // An interrupted iteration is discarded: the last completed one stays the answer.
         if (!iteration) {
             break;
         }
 
-        // A deeper result replaces a shallower one.
         result = *iteration;
 
         const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(

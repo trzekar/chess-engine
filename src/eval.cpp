@@ -5,10 +5,8 @@
 #include <algorithm>
 
 namespace {
-// Game phase: how much non-pawn material is left. The start position has 24 (per side four
-// minor pieces, two rooks and a queen), a pure middlegame; kings and pawns alone have 0,
-// a pure endgame. Pawns and kings count 0: the kings are always there, and the number of
-// pawns says little about the stage of the game.
+// Game phase from non-pawn material: 24 in the start position, 0 with kings and pawns only.
+// Pawns don't count, their number says little about the stage of the game.
 constexpr int MATERIAL_PHASE_VALUE[PIECE_TYPE_NB] = {0, 1, 1, 2, 4, 0};
 constexpr int MATERIAL_PHASE_VALUE_SUM = 24;
 
@@ -162,12 +160,9 @@ void init_eval() {
                 int rank = rank_of(sq);
                 int file = file_of(sq);
 
-                // Our squares count from a1 = 0, the tables from a8 = 0. A white piece flips the
-                // rank to
-                // find its row (the same as sq ^ 56). A black piece needs the entry of the mirrored
-                // white square (same file, rank 1 <-> 8), and that flip cancels the change of
-                // numbering, so it reads index `sq` as it is. The file never flips: the kingside is
-                // files e-h for both colors.
+                // The tables start at a8, our squares at a1. White reads the flipped square
+                // (sq ^ 56); Black reads its mirror image on White's side, and the two flips
+                // cancel out, leaving sq.
                 int sq_nb = Color(c) == WHITE ? ((7 - rank) * 8 + file) : (rank * 8 + file);
 
                 mg_table[c][p][s] = mg_value[p] + mg_pesto_table[p][sq_nb];
@@ -176,7 +171,7 @@ void init_eval() {
         }
     }
 }
-// One pass over the board: `piece_at` gives the type, White's occupancy the color.
+
 int eval(const Position &pos) {
     int mg[COLOR_NB] = {};
     int eg[COLOR_NB] = {};
@@ -206,6 +201,7 @@ int eval(const Position &pos) {
     // An early promotion can push the phase above 24 and give the endgame a negative weight.
     phase = std::min(phase, MATERIAL_PHASE_VALUE_SUM);
 
+    // Tapered eval: interpolate between the middlegame and endgame scores by phase.
     return (phase * mg_score + (MATERIAL_PHASE_VALUE_SUM - phase) * eg_score) /
            MATERIAL_PHASE_VALUE_SUM;
 }

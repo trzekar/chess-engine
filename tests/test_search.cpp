@@ -235,17 +235,12 @@ static void test_negamax_node_counts() {
     }
 }
 
-// An independent search over the same tree as search: alpha-beta to `depth`, then quiescence
-// search with the same rules. Out of check the side to move may stand pat on eval and plays only
-// captures and queen promotions; in check it plays every move, cannot stand pat, and with no
-// legal move is mated. The implementation differs on purpose: fail-hard instead of fail-soft,
-// and its own move ordering (reference_order). Neither changes the score of the root searched
-// with the full window, so it must equal the score of search. A move lost or duplicated by the
-// ordering code of search, or a wrong bound in its quiescence search, makes the two differ.
-// The reference knows no draws by repetition or the fifty-move rule, and needs none here: a
-// position repeats 4 plies later at the earliest, search() has no game history, and the perft
-// positions start with a half-move counter far below 100. test_against_reference checks the
-// last two, so a deeper comparison or another position fails loudly instead of silently.
+// An independent search over the same tree: alpha-beta to `depth`, then quiescence with the
+// same rules (out of check stand pat and captures, in check every move). It is fail-hard and
+// orders moves its own way; neither changes the root score, so it must equal that of search,
+// and a move lost by search's ordering or a wrong bound in its quiescence shows up. It knows no
+// draws and needs none: a repetition takes 4 plies, search() has no game history, and
+// test_against_reference checks that the half-move counters stay far below 100.
 
 // Most valuable victim first, then least valuable attacker, quiet moves last in generator
 // order: std::stable_sort on a key, unlike the selection in search.cpp. Only for speed: the
@@ -329,13 +324,10 @@ static int reference_search(const Position &pos, int depth) {
     return reference_alphabeta(pos, -INF, INF, depth, 0);
 }
 
-// search returns the score of reference_search, and its move is one that reaches that score:
-// its child, searched one ply shallower, scores the same from the other side. The move itself
-// may differ from the first best move in generator order, as move ordering breaks ties.
-// reference_search knows no null move pruning or late move reductions, and needs neither up to
-// depth 3: search passes and reduces only with at least 3 plies left, and below the root of a
-// search to depth 3 at most 2 are left. A deeper comparison would fail on every cut a pass
-// makes and every move a reduction misses.
+// search returns the score of reference_search and a move that reaches it: the child, one ply
+// shallower, scores the same from the other side. Ties may give another move than the
+// reference's. Up to depth 3 null move pruning and LMR never fire: both need 3 plies left, and
+// below the root at most 2 are.
 static void test_against_reference() {
     // With the table, an entry searched deeper than needed can give a better score than the
     // fixed-depth tree: right for play, but no longer the reference's number.
@@ -403,12 +395,10 @@ static void test_quiescence() {
     }
 }
 
-// With only a depth limit, think runs depths 1 to `depth` and returns the last: its score is that
-// of search(pos, depth), and its move reaches that score. Killers and history live across the
-// iterations of one think while every search() starts afresh, so the move order, the node counts
-// and, between moves of equal score, the move itself may differ; the score cannot. The node
-// counter runs on across iterations, so the counts the callback sees only grow. The callback
-// sees every depth once, in order, with the clock never going back.
+// With only a depth limit think returns the score of search(pos, depth) and a move that reaches
+// it. Killers and history carry over between iterations, so the move order, node counts and the
+// choice between equal moves may differ; the score may not. The node count only grows, and the
+// callback sees every depth once, in order, with the clock never going back.
 static void test_think_depth_limit() {
     // Without the table: with it, entries searched deeper than needed may change the score.
     const TableOff off;

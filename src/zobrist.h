@@ -8,16 +8,17 @@
 // of a position is the XOR of the keys of the features it has.
 struct ZobristKeys {
     uint64_t piece[COLOR_NB][PIECE_TYPE_NB][64];
+    // Indexed by the whole rights mask, so any change of rights is two XORs.
     uint64_t castling[16];
+    // By file only: the rank follows from the side to move.
     uint64_t ep_file[8];
     // Black to move.
     uint64_t side;
 };
 
 namespace zobrist_detail {
-// SplitMix64 (Steele, Lea and Flood, 2014): a small generator with well-mixed output. Written
-// out here rather than std::mt19937_64 so the keys can be computed at compile time, and are the
-// same with every compiler: MinGW at home, GCC and Clang in CI, the bot's server.
+// SplitMix64 (Steele, Lea and Flood, 2014), written out because std::mt19937_64 is not
+// constexpr.
 constexpr uint64_t splitmix64(uint64_t &state) {
     state += 0x9E3779B97F4A7C15ULL;
     uint64_t z = state;
@@ -44,7 +45,7 @@ constexpr ZobristKeys make_keys() {
 }
 } // namespace zobrist_detail
 
-// Computed by the compiler: there is nothing to initialise at startup.
+// Unlike the attack and eval tables, nothing to initialize at startup.
 inline constexpr ZobristKeys ZOBRIST = zobrist_detail::make_keys();
 
 // The hash of `pos` computed from scratch, ignoring pos.hash. parse_fen sets pos.hash with it;

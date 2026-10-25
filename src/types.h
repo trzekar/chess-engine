@@ -19,6 +19,7 @@ enum PieceType : uint8_t {
     NO_PIECE_TYPE = PIECE_TYPE_NB
 };
 
+// a1 = 0, b1 = 1, ..., h8 = 63.
 enum Square : int {
     A1,
     B1,
@@ -93,6 +94,8 @@ constexpr int rank_of(Square s) { return s >> 3; }
 
 constexpr Square make_square(int file, int rank) { return Square(rank * 8 + file); }
 
+// Bit 2: capture. Bit 3: promotion, with bits 0-1 giving the piece (N, B, R, Q).
+// 6 and 7 are unused.
 enum MoveFlag : uint8_t {
     QUIET = 0,
     DOUBLE_PUSH = 1,
@@ -110,6 +113,7 @@ enum MoveFlag : uint8_t {
     QUEEN_PROMOTION_CAPTURE = 15,
 };
 
+// from in bits 0-5, to in bits 6-11, flag in bits 12-15. Move() (a1a1) means no move.
 struct Move {
     uint16_t data = 0;
 

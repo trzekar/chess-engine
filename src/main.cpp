@@ -51,9 +51,8 @@ static bool parse_args(int argc, char **argv, int &depth, Position &pos) {
         return false;
     }
 
-    // `i` stands on the word "moves" (or past the end), so the list starts one further.
-    // Each move is tried on a copy: make_move changes the position even when it returns false,
-    // and the error message should show the position the move was played from.
+    // `i` stands on "moves" or past the end. Moves are tried on a copy, so the error message
+    // shows the position the move was played from.
     for (++i; i < argc; ++i) {
         const Move m = parse_uci_move(pos, argv[i]);
         Position next = pos;
@@ -129,10 +128,8 @@ static int run_search(int argc, char **argv, SearchFunction search_function) {
     return 0;
 }
 
-// engine bench [depth]: searches the fixed bench positions (src/bench.h) to `depth`, by default
-// BENCH_DEPTH, and prints the node count of each, the total and the speed. The total must not
-// change in a change that is meant to leave the search as it was. Record it in
-// results/bench.csv, from Release only.
+// engine bench [depth]: searches the bench positions (src/bench.h) to `depth`, BENCH_DEPTH by
+// default, and prints the node count of each, the total and the speed.
 static int run_bench(int argc, char **argv) {
     int depth = BENCH_DEPTH;
     if (argc > 2) {

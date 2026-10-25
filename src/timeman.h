@@ -5,13 +5,13 @@
 
 using milliseconds = std::chrono::milliseconds;
 
-// Time left on the clock after the move, for the delay of the GUI and the operating system.
+// Kept on the clock after the move, for GUI and OS latency.
 constexpr milliseconds MIN_TIME_DIFFERENCE = milliseconds(50);
+// Floor for a nearly empty clock; think completes depth 1 regardless of the budget.
 constexpr milliseconds MIN_TIME_FOR_MOVE = milliseconds(1);
 
-// Budget for one move of the side to move: time_left / 20 + increment / 2, the basic formula
-// from chessprogramming.org/Time_Management. About 20 more moves are expected, and half the
-// increment can be spent at once because it comes back after every move.
+// time_left / 20 + increment / 2 (chessprogramming.org/Time_Management): plan for about 20
+// more moves; half the increment is safe to spend, as it comes back after every move.
 constexpr milliseconds time_for_move(const milliseconds time_left, const milliseconds increment){
     milliseconds time = time_left / 20 + increment / 2;
 

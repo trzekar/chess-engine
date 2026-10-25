@@ -7,6 +7,8 @@ Bitboard PAWN_ATTACKS[COLOR_NB][64];
 
 namespace {
 
+// A shift west wraps from the a-file onto the h-file, a shift east from h onto a. Each
+// shift is masked with the files it cannot legally land on.
 constexpr Bitboard NOT_A = ~FILE_A;
 constexpr Bitboard NOT_AB = ~(FILE_A | FILE_B);
 constexpr Bitboard NOT_H = ~FILE_H;
@@ -59,6 +61,8 @@ Bitboard pawn_mask(Square s, Color c) {
     return attacks;
 }
 
+// The ray from s in direction (df, dr), up to and including the first piece in the way, of
+// either color: callers mask out their own pieces.
 Bitboard slide(Square s, Bitboard occ, int df, int dr) {
     Bitboard attacks = 0;
     int f = file_of(s) + df;

@@ -25,8 +25,8 @@ struct SearchResult {
     // From the point of view of the side to move.
     int score = 0;
 
-    // Every call of the search is a node, the root and the leaves included, except a draw by
-    // repetition or the fifty-move rule, found before the node is searched.
+    // Calls of alphabeta and quiescence, the root included; draws by repetition or the
+    // fifty-move rule return before they are counted. In think, the total of all iterations.
     uint64_t nodes = 0;
 };
 
@@ -44,27 +44,22 @@ struct FinishedIteration {
     std::chrono::milliseconds time = {};
 };
 
-// Plain negamax without alpha-beta pruning: visits every node up to `depth`, so its node
-// count equals the sum of perft(0..depth). Too slow for play; kept as the reference that
-// `search` is tested against. `depth` must be at least 1.
+// Plain negamax, no pruning and no quiescence: its node count is the sum of perft(0..depth).
+// Too slow for play: a reference for tests and node counts. `depth` must be at least 1.
 SearchResult negamax_root(const Position &pos, int depth);
 
-// Alpha-beta search to a fixed `depth`. With the full window it returns the same score as
-// negamax_root while visiting fewer nodes. `depth` must be at least 1.
+// Alpha-beta with quiescence search to a fixed `depth`, from an empty transposition table,
+// so the result depends on `pos` and `depth` alone. `depth` must be at least 1.
 SearchResult search(const Position &pos, int depth);
 
 // Called after every completed iteration, on the thread that runs think.
 using IterationCallback = std::function<void(const FinishedIteration &)>;
 
-// Iterative deepening: searches to depth 1, 2, 3, ... until it completes `limits.depth`, the
-// time in `limits.time` runs out or `stop_flag` is set. Returns the result of the last completed
-// iteration; an interrupted one is discarded. Depth 1 always completes, so the result holds a
-// move whenever the position has a legal one.
-// `history` holds the hashes of the positions of the game before `pos`, oldest first, without
-// `pos` itself: the positions a repetition can go back to. Positions before the last capture or
-// pawn move can never repeat, so passing the whole game costs nothing but a few bytes.
-// `stop_flag` may be set from another thread at any time. think also sets it itself when the
-// time runs out, so the caller clears it before each call.
+// Iterative deepening until `limits.depth` is completed, the time runs out or `stop_flag` is
+// set from any thread. Returns the last completed iteration; depth 1 always completes, so
+// there is a move whenever one is legal. `history`: hashes of the game before `pos`, oldest
+// first (the whole game is fine, the scan stops at the last capture or pawn move).
+// think sets `stop_flag` itself on timeout, so clear it before each call.
 SearchResult think(const Position &pos, const std::vector<uint64_t> &history,
                    const SearchLimits &limits, std::atomic<bool> &stop_flag,
                    const IterationCallback &on_iteration);

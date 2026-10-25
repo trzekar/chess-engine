@@ -79,8 +79,8 @@ std::optional<int64_t> parse_number(const std::string &word) {
     return std::max<int64_t>(value, 0);
 }
 
-// The limits of the Hash option, in MB. The default is DEFAULT_HASH_MB from tt.h. A GUI may ask
-// for more than a small machine has: the bot's server sets its own value in deploy/config.yml.
+// Limits of the Hash option, in MB; the default is DEFAULT_HASH_MB (tt.h). The cap keeps a GUI
+// from asking for more memory than a small machine has.
 constexpr int64_t MIN_HASH_MB = 1;
 constexpr int64_t MAX_HASH_MB = 1024;
 
@@ -115,8 +115,7 @@ public:
             stop_search();
             set_option(words);
         } else if (command == "ucinewgame") {
-            // Entries from the last game would only take room: a new game starts empty. Between
-            // the moves of one game the table is kept, as its entries are about to be needed.
+            // A new game starts with an empty table; between the moves of one game it is kept.
             stop_search();
             tt.clear();
         } else if (command == "position") {
@@ -246,8 +245,7 @@ private:
 
         // think may have set the flag at the end of the previous search; it must start clear.
         stop_ = false;
-        // The thread gets its own copies: the next `position` command replaces pos_ and history_
-        // only after stop_search has joined it, but a copy needs no such reasoning.
+        // Copies: the search thread shares no state with the next command.
         search_thread_ = std::thread([this, pos = pos_, history = history_, limits, infinite] {
             const SearchResult result =
                 think(pos, history, limits, stop_,

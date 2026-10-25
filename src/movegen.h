@@ -3,7 +3,8 @@
 #include <string>
 
 struct MoveList {
-    // The maximum number of legal moves in any reachable position is 218 (Nenad Petrovic, 1964)
+    // 218 is the most legal moves known in a reachable position (Petrović, 1964). The list
+    // holds pseudo-legal moves, hence the margin and the assert.
     Move moves[256];
     int size = 0;
 
@@ -19,9 +20,8 @@ struct MoveList {
 // own king in check; make_move rejects those.
 void generate_moves(const Position &pos, MoveList &list);
 
-// Appends the pseudo-legal moves that quiescence search plays: every capture (en passant and
-// capture promotions included) and the quiet queen promotion. No castling, no quiet moves, no
-// quiet underpromotions. Like generate_moves, a move may leave the own king in check.
+// Appends the pseudo-legal moves of quiescence search: every capture, en passant and capture
+// promotions included, plus the quiet queen promotion. A move may leave the own king in check.
 void generate_captures(const Position &pos, MoveList &list);
 
 std::string to_uci(Move m);

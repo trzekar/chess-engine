@@ -5,8 +5,8 @@
 #include <random>
 
 // Reference implementation: walks the board on (file, rank) coordinates,
-// with no shifts and no masks. It stays the oracle when attacks.cpp moves to
-// magic bitboards in step 5.2.
+// with no shifts and no masks. It stays the oracle if attacks.cpp moves to
+// magic bitboards.
 
 struct Step {
     int df;
@@ -67,7 +67,7 @@ static Bitboard ref_bishop(Square s, Bitboard occ) {
            ref_ray(s, occ, {-1, -1});
 }
 
-// Squares attacked by the piece of type `pt` and colour `c` standing on `s`.
+// Squares attacked by the piece of type `pt` and color `c` standing on `s`.
 static Bitboard ref_attacks(Color c, PieceType pt, Square s, Bitboard occ) {
     switch (pt) {
     case PAWN:
@@ -109,7 +109,7 @@ static void test_known_squares() {
     // is_attacked reads the white table on rank 1, where no white pawn stands.
     assert(PAWN_ATTACKS[WHITE][E1] == (square_bb(D2) | square_bb(F2)));
 
-    // A blocker ends the ray and belongs to it, whatever its colour.
+    // A blocker ends the ray and belongs to it, whatever its color.
     const Bitboard rook_a1 = square_bb(A2) | square_bb(A3) | square_bb(A4) |
                              (RANK_1 & ~square_bb(A1));
     assert(rook_attacks(A1, square_bb(A4)) == rook_a1);

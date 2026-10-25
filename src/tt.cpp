@@ -6,8 +6,10 @@
 TranspositionTable tt(DEFAULT_HASH_MB);
 
 namespace {
+// Mate scores are stored relative to the node and re-anchored at the ply they are read from,
+// so a mate stays correct when the position comes back at another ply. Anything farther than
+// MAX_PLY from ±MATE is an evaluation and passes unchanged.
 int score_from_tt(int tt_score, int ply) {
-    // A mate is within MAX_PLY of ±MATE; no evaluation comes near. Other scores pass unchanged.
     if (MATE - std::abs(tt_score) > MAX_PLY) {
         return tt_score;
     }
@@ -18,7 +20,6 @@ int score_from_tt(int tt_score, int ply) {
     return tt_score + ply;
 }
 int score_to_tt(int score, int ply) {
-    // A mate is within MAX_PLY of ±MATE; no evaluation comes near. Other scores pass unchanged.
     if (MATE - std::abs(score) > MAX_PLY) {
         return score;
     }
@@ -33,6 +34,8 @@ int score_to_tt(int score, int ply) {
 void TranspositionTable::resize(size_t mb) {
     size_t new_size = mb * 1024 * 1024 / sizeof(TTEntry);
     size_t table_size = std::bit_floor(new_size);
+    // bit_floor(0) == 0: with mb = 0 the mask wraps around, harmless, as probe and store
+    // check empty() first.
     mask = (table_size - 1);
     table.resize(table_size);
     clear();

@@ -25,11 +25,8 @@ constexpr CastlingInfo CASTLING_INFO[] = {
     {'q', BLACK_QUEENSIDE, BLACK, E8, A8},
 };
 
-// Every move ANDs the masks of its two squares into castling_rights. `from` covers the
-// own king or rook leaving home, `to` covers a rook captured on its home square.
-// A1 loses Q, E1 loses K and Q, H1 loses K
-// A8 loses q, E8 loses k and q, H8 loses k
-// Other squares don't cause loss of any castling rights.
+// Every move ANDs castling_rights with the masks of its two squares: `from` catches the king
+// or a rook leaving home, `to` a rook captured at home. 15 keeps all rights; a1 = 13 drops Q.
 const uint8_t CASTLING_MASK[64] = {13, 15, 15, 15, 12, 15, 15, 14, 15, 15, 15, 15, 15, 15, 15, 15,
                                    15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,
                                    15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,
@@ -234,6 +231,8 @@ bool Position::is_attacked(Square s, Color by) const {
     if (KING_ATTACKS[s] & pieces[by][KING])
         return true;
 
+    // Reverse lookup: a pawn of `by` attacks s from exactly the squares that a pawn of the
+    // other color on s would attack.
     if (PAWN_ATTACKS[~by][s] & pieces[by][PAWN])
         return true;
 
@@ -253,8 +252,7 @@ bool Position::make_move(Move m) {
     PieceType pt = piece_at(from);
     MoveFlag flag = m.flag();
 
-    // Every move clears the old en passant square and counts toward the fifty-move rule.
-    // A double push sets a new square below, a capture or a pawn move resets the counter.
+    // Clear the old en passant square; a capture or pawn move resets the counter below.
     if (ep_square != NO_SQUARE) {
         hash ^= ZOBRIST.ep_file[file_of(ep_square)];
     }
@@ -307,7 +305,9 @@ bool Position::make_move(Move m) {
         half_move_counter = 0;
     }
 
-    // The en passant square is the one the pawn skipped, halfway between `from` and `to`.
+    // The skipped square. Set after every double push, even when no pawn can take en passant,
+    // so the hash differs from the same position reached otherwise: a few repetitions and
+    // transpositions go unnoticed.
     if (flag == DOUBLE_PUSH) {
         ep_square = Square((from + to) / 2);
         hash ^= ZOBRIST.ep_file[file_of(ep_square)];
@@ -340,9 +340,8 @@ void Position::make_null_move() {
     hash ^= ZOBRIST.side;
     side_to_move = ~side_to_move;
 
-    // Zeroing the counter stops the repetition scan of alphabeta at this null move: it looks back
-    // only half_move_counter plies, and a position "repeated" across a pass is no real repetition,
-    // as a game cannot pass. The cost: below the null move the fifty-move rule counts from zero,
-    // and a search almost never reaches 100 plies past it.
+    // Zeroed so the repetition scan stops here: a position "repeated" across a pass is no real
+    // repetition. Below the null move the fifty-move count restarts, which a search practically
+    // never notices.
     half_move_counter = 0;
 }

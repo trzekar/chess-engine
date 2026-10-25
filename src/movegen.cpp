@@ -3,19 +3,16 @@
 #include "bitboard.h"
 
 namespace {
-// What a generator call produces. CAPTURES is the move set of quiescence search:
-// every capture and the quiet queen promotion.
+// CAPTURES also includes the quiet queen promotion (see generate_captures).
 enum class GenType { ALL, CAPTURES };
 
-// Adds one move from `from` to each square in `targets`, all with the same flag.
 void add_moves(MoveList &list, Square from, Bitboard targets, MoveFlag flag) {
     while (targets) {
         list.add(Move(from, pop_lsb(targets), flag));
     }
 }
 
-// Pseudo-legal moves of one non-pawn piece type for the side to move.
-// Castling is generated separately.
+// Pawns and castling have their own generators.
 void generate_piece_moves(const Position &pos, MoveList &list, PieceType pt, GenType type) {
     Color piece_color = pos.side_to_move;
     Bitboard enemy_occ = pos.occupancy[~piece_color];
@@ -59,7 +56,6 @@ void generate_pawn_moves(const Position &pos, MoveList &list, GenType type) {
     Bitboard enemy_occ = pos.occupancy[~piece_color];
     Bitboard occ = pos.occupied();
 
-    // White pawns move up the board, black pawns down. Ranks are counted from 0.
     int forward = piece_color == WHITE ? 1 : -1;
     int start_rank = piece_color == WHITE ? 1 : 6;
     int promotion_rank = piece_color == WHITE ? 7 : 0;
@@ -72,9 +68,8 @@ void generate_pawn_moves(const Position &pos, MoveList &list, GenType type) {
         Bitboard captures = PAWN_ATTACKS[piece_color][s] & enemy_occ;
         bool push_free = !(occ & square_bb(push));
 
-        // A pawn that reaches the last rank must promote: four moves per target square.
-        // CAPTURES keeps every capture promotion but of the quiet ones only the queen: a quiet
-        // underpromotion almost never changes the score and only adds nodes.
+        // CAPTURES keeps every capture promotion but only the quiet queen promotion: a quiet
+        // underpromotion almost never changes the score.
         if (rank_of(push) == promotion_rank) {
             for (MoveFlag flag :
                  {KNIGHT_PROMOTION, BISHOP_PROMOTION, ROOK_PROMOTION, QUEEN_PROMOTION}) {

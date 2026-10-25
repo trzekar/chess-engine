@@ -46,9 +46,7 @@ LABELS = {
     "lmr": "LMR",
 }
 
-# Colours from the reference palette of the dataviz guidelines: the first categorical slot for
-# the one series, hairline grid and recessive axes, text in ink colours rather than the series
-# colour. Dark mode has its own steps, chosen for the dark surface, not an inverted copy.
+# One palette per GitHub theme. Dark mode has its own colours, not an inverted copy of light.
 THEMES = {
     "light": {"surface": "#fcfcfb", "ink": "#0b0b0b", "ink2": "#52514e", "muted": "#898781",
               "grid": "#e1e0d9", "axis": "#c3c2b7", "series": "#2a78d6", "band": 0.16},
@@ -138,7 +136,7 @@ def plot(baseline, steps, totals, margins, out, theme):
     ax.fill_between(xs, lows, highs, step="mid", color=c["series"], alpha=c["band"], linewidth=0)
     ax.step(xs, ys, where="mid", color=c["series"], linewidth=2, solid_joinstyle="miter")
 
-    # The gain of each step above its band: selective direct labels, in ink, not series colour.
+    # The gain of each step, printed above its band.
     for i, step in enumerate(steps, start=1):
         ax.annotate(f"+{step['elo']:.0f}", (i, totals[i] + margins[i]),
                     xytext=(0, 5), textcoords="offset points", ha="center", va="bottom",

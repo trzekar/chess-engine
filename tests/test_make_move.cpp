@@ -7,7 +7,6 @@
 // Expected FENs come from an independent implementation (python-chess 1.10.0). They record the
 // en passant square after every double push, as the FEN standard does. Stockfish's "d" command
 // shows it only when an en passant capture is possible, so its FENs can differ in that field.
-// The numbers match the test case table in the step 1.5 notes.
 
 struct Case {
     const char *fen;

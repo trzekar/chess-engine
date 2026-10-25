@@ -7,6 +7,7 @@
 struct Position {
     Bitboard pieces[COLOR_NB][PIECE_TYPE_NB] = {};
     Bitboard occupancy[COLOR_NB] = {};
+    // Type only; the color is in occupancy.
     PieceType piece_on[64];
     Color side_to_move = WHITE;
     uint8_t castling_rights = NO_CASTLING;
@@ -45,7 +46,8 @@ struct Position {
 
     bool in_check(Color c) const;
 
-    // Plays `m` and returns false if it leaves the own king in check.
+    // Plays a pseudo-legal `m`; false if it leaves the own king in check. The position is
+    // changed either way, so play on a copy.
     bool make_move(Move m);
     // Pseudo-move for null move pruning.
     void make_null_move();
@@ -53,6 +55,7 @@ struct Position {
 
 constexpr std::string_view START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
+// Accepts 4 or 6 fields. On failure returns false and leaves `pos` unchanged.
 bool parse_fen(std::string_view fen, Position &pos);
 std::string to_fen(const Position &pos);
 void print_position(const Position &pos);

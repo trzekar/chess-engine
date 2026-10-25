@@ -147,8 +147,7 @@ static void test_random_walks() {
                     ++count;
                 }
             }
-            // Every legal move is checked, not only the one played: in 12 000 plies that is
-            // over 300 000 moves of every kind.
+            // Every legal move is checked, not only the one played: over 100 000 moves in all.
             for (int i = 0; i < count; ++i)
                 expect_hash(pos, played[i], legal[i]);
             moves_checked += count;
@@ -187,12 +186,10 @@ static void test_transpositions() {
     assert((direct.hash ^ stepwise.hash) == ZOBRIST.ep_file[file_of(E6)]);
 }
 
-// make_null_move passes the turn: the side to move changes, the en passant square goes, the
-// half-move counter restarts at 0 (so that the repetition scan stops at the null move), the move
-// number grows after Black passes, and pieces and castling rights stay. The hash changes by the
-// side key and the key of the en passant file that went, and equals compute_hash. Two passes in a
-// row give back the position without its en passant square. The search never passes in check,
-// so no position here is in check.
+// make_null_move: the side to move changes, the en passant square goes, the half-move counter
+// restarts and the move number grows after Black; pieces and rights stay. The hash changes by
+// exactly the side key and the en passant key. Two passes in a row give back the position
+// without its en passant square. No position here is in check: the search never passes there.
 static void test_null_move() {
     struct Case {
         const char *before;

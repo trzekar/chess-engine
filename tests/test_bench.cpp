@@ -13,7 +13,7 @@
 
 // Checks `bench`: every position is valid and playable, the total is the plain sum of
 // search(pos, depth) over the positions, and two runs print the same counts. Depth 3 keeps the
-// test fast under the sanitizers; the counts do not depend on the depth chosen here.
+// test fast under the sanitizers; nothing checked here depends on the depth.
 
 static void fail(const std::string &what) {
     std::cerr << "test_bench: " << what << '\n';
